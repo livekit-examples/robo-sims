@@ -1,0 +1,16 @@
+# The reBot B601-DM emulated hardware alone (see Dockerfile).
+#
+#   docker compose -f docker/rebot-bus/compose.yaml up --build -d
+#
+# The bus port binds to localhost only; set REBOT_SIM_BIND=0.0.0.0 to reach
+# it from another machine. It has no authentication and moves the arm.
+
+services:
+  rebot-bus:
+    build:
+      context: ../..
+      dockerfile: docker/rebot-bus/Dockerfile
+    image: rebot-bus:latest
+    init: true
+    ports:
+      - "${REBOT_SIM_BIND:-127.0.0.1}:5555:5555" # Damiao bus (serial bridge protocol over TCP)
