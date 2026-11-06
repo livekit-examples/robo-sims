@@ -3,3 +3,4 @@ livekit==1.2.0
 livekit-api==1.2.2
 mujoco==3.17.0
 numpy==2.5.4
+pillow==11.3.0

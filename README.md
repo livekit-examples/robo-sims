@@ -12,7 +12,7 @@ python -m sims run rebot-arm --help       # its options
 |---|---|---|
 | `trossen-wxai` | participant | One Trossen WidowX AI arm with a wrist D405 stereo camera and a scene camera. |
 | `trossen-workbench` | participant | Two Trossen WidowX Pro arms with ZED X Nano wrist cameras, a ZED X Mini scene camera and a scene camera. |
-| `rebot-arm` | hardware | One Seeed reBot B601-DM arm. The real robot program drives an emulated Damiao motor bus. |
+| `rebot-arm` | hardware | One Seeed reBot B601-DM arm with a scene camera. The real robot program drives an emulated Damiao motor bus and opens a rendered camera stream. |
 
 Nothing here uses ROS.
 
@@ -42,9 +42,9 @@ python3.12 -m venv .venv
 
 ## LiveKit credentials
 
-All the simulations use the same credentials as the controller app:
+All the simulations share one set of credentials:
 
-- They read `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` and `LIVEKIT_ROOM_NAME` from `trossen-livekit/controller/.env.local`. A variable set in the environment takes precedence. To read another file, pass `--env-file`.
+- They read `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` and `LIVEKIT_ROOM_NAME` from `.env.local` in this folder. Copy `.env.example` to start one. Use the same LiveKit project and room as the controller app (`trossen-livekit/controller/.env.local`), so that the app sees the simulation. A variable set in the environment takes precedence. To read another file, pass `--env-file`. `.env.local` is git-ignored.
 - The simulation makes its own token. Its identity is `simulation-<sim>-<scientist>`, for example `simulation-rebot-arm-curie`, with the scientist name taken from the same list as the controller app's `controller-<scientist>` identities. It picks a name nobody in the room is using, so several simulations can share one room. The log shows the identity:
 
   ```text
