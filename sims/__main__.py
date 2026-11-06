@@ -13,15 +13,15 @@ import sys
 from pathlib import Path
 
 from . import assets
-from .paths import CONTROLLER_ENV
+from .paths import ENV_FILE
 from .registry import SIMULATIONS
 
 
 def add_livekit_arguments(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("LiveKit")
-    group.add_argument("--env-file", type=Path, default=CONTROLLER_ENV,
-                       help="LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_ROOM_NAME of the "
-                            "controller app (default: %(default)s). Variables in the environment take precedence.")
+    group.add_argument("--env-file", type=Path, default=ENV_FILE,
+                       help="LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_ROOM_NAME "
+                            "(default: %(default)s). Variables in the environment take precedence.")
     group.add_argument("--url", default=None, help="LiveKit URL (default: LIVEKIT_URL)")
     group.add_argument("--token", default=None,
                        help="join with this token instead of creating one (default: LIVEKIT_TOKEN)")

@@ -1,8 +1,8 @@
 """LiveKit credentials of a simulated robot.
 
-A simulation creates its own token from the API key and secret of the
-controller app, in controller/.env.local of the teleop repository, with a
-free identity simulation-<sim>-<scientist>, picked like the
+A simulation creates its own token from the API key and secret in
+.env.local at the root of this repository (the same project and room as the
+controller app), with a free identity simulation-<sim>-<scientist>, picked like the
 controller-<scientist> identities of the controller app. A token given with
 --token or LIVEKIT_TOKEN is used as is instead.
 
@@ -19,11 +19,16 @@ import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
+import jwt
 from livekit import api
 
 from .paths import SCIENTIST_NAMES_FILE
 
 IDENTITY_ATTEMPTS = 20
+# Tokens become valid this long before this machine's clock says now, so a
+# clock running ahead of the server's (LiveKit allows about a minute) still
+# joins. The expiry is unchanged.
+CLOCK_SKEW_ALLOWANCE = 120  # s
 
 
 @dataclass(frozen=True)
@@ -103,10 +108,14 @@ def create_token(settings: ServerSettings, identity: str) -> str:
     """A token that lets the robot join the room, publish, subscribe and serve RPCs."""
     grants = api.VideoGrants(room_join=True, room=settings.room, can_publish=True,
                              can_subscribe=True, can_publish_data=True)
-    return (api.AccessToken(settings.api_key, settings.api_secret)
-            .with_identity(identity)
-            .with_grants(grants)
-            .to_jwt())
+    token = (api.AccessToken(settings.api_key, settings.api_secret)
+             .with_identity(identity)
+             .with_grants(grants)
+             .to_jwt())
+    # AccessToken always sets nbf to now, so move it back and sign again.
+    claims = jwt.decode(token, settings.api_secret, algorithms=["HS256"], options={"verify_nbf": False})
+    claims["nbf"] -= CLOCK_SKEW_ALLOWANCE
+    return jwt.encode(claims, settings.api_secret, algorithm="HS256")
 
 
 async def credentials(args: argparse.Namespace, sim_name: str) -> Credentials:

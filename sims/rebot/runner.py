@@ -3,10 +3,12 @@
 Starts two processes:
 
 1. the emulated hardware (`sims.rebot.bus`): MuJoCo behind an emulated Damiao
-   bus, on a pseudo-terminal that stands in for the arm's /dev/ttyACM0;
+   bus, on a pseudo-terminal that stands in for the arm's /dev/ttyACM0, and a
+   rendered scene camera served as MJPEG on localhost, standing in for the
+   arm's UVC scene camera;
 2. the teleop robot program, `trossen_livekit_robot --platform rebot_b601_dm`,
-   with its arm connection pointed at that pseudo-terminal, and a LiveKit
-   token made here.
+   with its arm connection pointed at that pseudo-terminal, its scene camera
+   at that stream, and a LiveKit token made here.
 
 The robot program is the one that runs on the arm, unchanged, so the driver,
 safety limits and LiveKit code under test are the real ones. On Ctrl-C the
@@ -19,6 +21,7 @@ import asyncio
 import logging
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -43,6 +46,13 @@ def add_arguments(parser, sim) -> None:
     parser.add_argument("--bus-port", type=int, default=0,
                         help="also serve the bus on this localhost TCP port, for tools/serial_bridge.py (default: off)")
     parser.add_argument("--status-file", type=Path, default=None, help="write the joint state JSON here at 10 Hz")
+    parser.add_argument("--no-scene-camera", dest="scene_camera", action="store_false",
+                        help="don't render the scene camera; the robot program then runs without one")
+    parser.add_argument("--camera-port", type=int, default=0,
+                        help="localhost port of the scene camera stream (default: a free one)")
+    parser.add_argument("--camera-size", default="640x480", metavar="WxH",
+                        help="rendered scene camera size (default: %(default)s, the robot program's output size)")
+    parser.add_argument("--camera-fps", type=int, default=30, help="scene camera frame rate (default: %(default)s)")
     parser.add_argument("--robot-arg", action="append", default=[], metavar="ARG",
                         help="extra robot program argument; repeat for each, e.g. --robot-arg=--camera-device "
                              "--robot-arg=scene=/dev/video0")
@@ -56,9 +66,26 @@ def _die_with_parent() -> None:
         ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
 
 
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def _scene_camera_url(args) -> str | None:
+    """The stream the robot program opens as its scene camera, or None when it uses none or its own."""
+    if not args.scene_camera or "--camera-device" in args.robot_arg:
+        return None
+    return f"http://127.0.0.1:{args.camera_port}/scene.mjpg"
+
+
 def _start_bus(args) -> subprocess.Popen:
     command = [sys.executable, "-m", "sims.rebot.bus", "--model", str(args.model),
                "--serial-link", str(args.serial_link), "--tcp-port", str(args.bus_port)]
+    if _scene_camera_url(args):
+        width, height = args.camera_width, args.camera_height
+        command += ["--camera-port", str(args.camera_port), "--camera-width", str(width),
+                    "--camera-height", str(height), "--camera-fps", str(args.camera_fps)]
     if args.status_file:
         command += ["--status-file", str(args.status_file)]
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [str(SIMULATION_DIR), os.environ.get("PYTHONPATH")]))}
@@ -81,8 +108,11 @@ def _start_bus(args) -> subprocess.Popen:
 def _robot_command(args, sim) -> list[str]:
     command = [str(args.robot_program), "--platform", sim.options["platform"],
                "--arm-connection", str(args.serial_link), "--controller-prefix", args.controller_prefix]
-    if "--camera-device" not in args.robot_arg:
-        command += ["--no-camera", "scene"]  # The simulation renders no camera yet.
+    url = _scene_camera_url(args)
+    if url:
+        command += ["--camera-device", f"scene={url}"]
+    elif "--camera-device" not in args.robot_arg:
+        command += ["--no-camera", "scene"]
     return command + args.robot_arg
 
 
@@ -99,6 +129,16 @@ def _stop(process: subprocess.Popen, sig: int, timeout: float, name: str) -> Non
 
 
 def run(args, sim) -> int:
+    try:
+        args.camera_width, args.camera_height = (int(n) for n in args.camera_size.lower().split("x"))
+    except ValueError:
+        raise SystemExit(f"--camera-size takes WxH, for example 640x480, not {args.camera_size!r}") from None
+    if args.camera_width < 2 or args.camera_height < 2 or args.camera_width % 2 or args.camera_height % 2:
+        raise SystemExit("--camera-size needs an even width and height")
+    if args.camera_fps < 1:
+        raise SystemExit("--camera-fps must be positive")
+    if _scene_camera_url(args) and not args.camera_port:
+        args.camera_port = _free_port()
     if not args.model.is_file():
         raise SystemExit(f"{args.model} does not exist. Run: python -m sims fetch-assets {sim.name}")
     program_ready = os.access(args.robot_program, os.X_OK)

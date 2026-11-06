@@ -126,6 +126,16 @@ def serve(args: argparse.Namespace) -> None:
         add(Connection(f"serial {args.serial_link}", master))
         log(f"bus on serial device {args.serial_link}")
 
+    camera = None
+    if args.camera_port is not None:
+        from .camera import SceneCamera
+
+        camera = SceneCamera(arm.model, args.camera_width, args.camera_height, args.camera_fps,
+                             args.tcp_host, args.camera_port, log)
+        camera.publish_state(arm.data)
+        camera.start()
+        log(f"scene camera on {camera.url} ({args.camera_width}x{args.camera_height} at {args.camera_fps} fps)")
+
     listener = None
     if args.tcp_port:
         listener = socket.create_server((args.tcp_host, args.tcp_port), reuse_port=True)
@@ -156,6 +166,8 @@ def serve(args: argparse.Namespace) -> None:
         while steps < due:
             arm.step()
             steps += 1
+        if camera is not None:
+            camera.publish_state(arm.data)
 
         if args.status_file and arm.data.time >= next_status:
             write_status(args.status_file, arm)
@@ -183,6 +195,8 @@ def serve(args: argparse.Namespace) -> None:
                             replies += encode_rx(reply)
             if replies:
                 connection.write(bytes(replies))
+    if camera is not None:
+        camera.stop()
     if args.serial_link and args.serial_link.is_symlink():
         args.serial_link.unlink()  # Clients then see the device is gone, as on unplugging.
     log("stopped")
@@ -198,6 +212,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--tcp-host", default="127.0.0.1")
     parser.add_argument("--tcp-port", type=int, default=5555, help="TCP port for the bus (0 for none)")
     parser.add_argument("--status-file", type=Path, default=None, help="write joint state JSON here at 10 Hz")
+    parser.add_argument("--camera-port", type=int, default=None,
+                        help="serve the scene camera as MJPEG on this port (0 picks a free one; default: no camera)")
+    parser.add_argument("--camera-width", type=int, default=640)
+    parser.add_argument("--camera-height", type=int, default=480)
+    parser.add_argument("--camera-fps", type=int, default=30)
     args = parser.parse_args(argv)
     if args.serial_link == Path(""):
         args.serial_link = None

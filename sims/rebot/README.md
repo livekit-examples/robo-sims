@@ -17,8 +17,8 @@ simulator: trossen_livekit_robot ── RebotDmDriver ── motorbridge ── 
 
 This starts two processes:
 
-1. **The emulated bus** (`sims.rebot.bus`). It serves a pseudo-terminal, linked by default at `$XDG_RUNTIME_DIR/sims-<uid>/rebot-arm-ttyACM0`.
-2. **The robot program**, as `trossen_livekit_robot --platform rebot_b601_dm --arm-connection <that device> --no-camera scene`, with a token made by the launcher (see the top-level README).
+1. **The emulated bus** (`sims.rebot.bus`). It serves a pseudo-terminal, linked by default at `$XDG_RUNTIME_DIR/sims-<uid>/rebot-arm-ttyACM0`, and the scene camera stream.
+2. **The robot program**, as `trossen_livekit_robot --platform rebot_b601_dm --arm-connection <that device> --camera-device scene=http://127.0.0.1:<port>/scene.mjpg`, with a token made by the launcher (see the top-level README).
 
 If either process exits, the launcher stops the other. On Ctrl-C, the robot program parks the arm at its home pose on the still-running bus, and then the bus stops.
 
@@ -27,7 +27,16 @@ Options:
 - `--bus-port PORT` also serves the bus on a localhost TCP port. This lets a driver in a container or on another machine reach it through `tools/serial_bridge.py`.
 - `--status-file PATH` writes the joint and motor state as JSON at 10 Hz.
 - `--robot-arg ARG` passes one extra argument to the robot program; repeat it for each argument.
-- The simulation renders no camera yet, so the robot program runs without its scene camera. To use a real camera, pass `--robot-arg=--camera-device --robot-arg=scene=/dev/video0`.
+- `--no-scene-camera` runs the robot program without a scene camera. `--camera-size WxH` (default 640x480) and `--camera-fps` (default 30) set the rendered stream. To use a real camera instead, pass `--robot-arg=--camera-device --robot-arg=scene=/dev/video0`.
+
+### Scene camera
+
+The real setup has a UVC scene camera that the robot program opens with OpenCV. The simulation stands in for it at the same boundary. The bus renders the scene from a fixed viewpoint beside the arm, like the Trossen single-arm scene camera, and serves it as MJPEG at `http://127.0.0.1:<port>/scene.mjpg`. The robot program's `OpenCvCamera` opens that URL as it would open `/dev/video0`, and publishes it as its `scene_camera` track. No kernel module or root is needed.
+
+- Rendering runs on its own thread from snapshots of the physics state, so it doesn't slow the 1 kHz physics loop. It shows the table objects where the physics has them.
+- It renders offscreen with EGL. On a machine without a GPU, set `MUJOCO_GL=osmesa` and install `libosmesa6`. If no OpenGL context can be made, the bus logs it and keeps running without the camera.
+- Seeed's model gives the arm's materials no color, so they would render white. The simulation colors them in memory to approximate the real arm. This doesn't change the physics.
+- To run the camera with the bus alone, pass `--camera-port PORT` to `sims.rebot.bus`. The `docker/rebot-bus` image doesn't include it.
 
 ### The bus alone
 
@@ -107,5 +116,5 @@ These hold for the real motors too, and the drivers handle them:
 
 - The POS_VEL, VEL and force-position loops are approximations; see the table above. MIT, the teleop driver's mode, is exact.
 - Not emulated: the CAN timeout register (9), communication-loss faults, temperatures (feedback reports 30 °C), and bus timing.
-- The table objects are physically simulated, but no client sees their state yet, and there is no camera.
+- The table objects are physically simulated. Only the scene camera shows their state.
 - Seeed's ROS 2 stack (their driver, web console, camera, MoveIt) is not included. Its driver talks motorbridge on a serial device, so it would still run against the bus from a separate ROS install.

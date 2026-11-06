@@ -13,6 +13,7 @@ and adjusted in memory to match the real arm:
   range is narrowed to match, and the right finger mirrors the left one.
 - The motors' rotor inertia is added to the gripper, and the integrator is
   implicit so stiff motor gains stay stable.
+- A `scene` camera is added beside the arm (see camera.py).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import mujoco_tools  # noqa: F401 - sets MUJOCO_GL before mujoco is imported
 import mujoco
 import numpy as np
 
@@ -100,6 +102,10 @@ def build_model(model_path: Path) -> mujoco.MjModel:
         tmax = MODELS[motor.model].tmax
         actuator.forcerange = [-tmax, tmax]
         actuator.ctrllimited = mujoco.mjtLimited.mjLIMITED_FALSE
+
+    from .camera import add_scene_camera
+
+    add_scene_camera(spec)
     return spec.compile()
 
 

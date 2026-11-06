@@ -1,6 +1,6 @@
 # Python 3.12. Versions tested together.
-livekit==1.2.0
+livekit==1.2.1
 livekit-api==1.2.2
-mujoco==3.17.0
+mujoco==4.0.0
 numpy==2.5.4
 pillow==11.3.0

@@ -41,7 +41,7 @@ SIMULATIONS = {
                    "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "single_wxai"}),
         Simulation("trossen-workbench", "two Trossen WidowX Pro arms with ZED X wrist and scene cameras",
                    "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "workbench"}),
-        Simulation("rebot-arm", "one Seeed reBot B601-DM arm on an emulated Damiao bus, driven by the robot program",
+        Simulation("rebot-arm", "one Seeed reBot B601-DM arm and a scene camera on emulated hardware, driven by the robot program",
                    "hardware", "sims.rebot.runner", ("rebot_b601_dm",), {"platform": "rebot_b601_dm"}),
     )
 }
