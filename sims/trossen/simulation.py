@@ -11,7 +11,9 @@ from ..mujoco_tools import look_at  # Sets MUJOCO_GL before mujoco is imported.
 import mujoco
 import numpy as np
 
+from . import whack
 from .protocol import Command
+from .whack import WhackAMole
 
 
 # The motion timing of the robot, from trossen-livekit/robot/src/arms/trossen_arm.cpp. The
@@ -209,7 +211,7 @@ class TrossenSimulation:
                  scene_width: int = 960, scene_height: int = 720,
                  model_path: Path | None = None):
         self.platform = scene
-        if scene == "single_wxai":
+        if scene in ("single_wxai", "whack_wxai"):
             source = assets_dir / "wxai" / "wxai_follower.xml"
         elif scene == "workbench":
             source = assets_dir / "workbench" / "scene.xml"
@@ -222,6 +224,8 @@ class TrossenSimulation:
         spec = mujoco.MjSpec.from_file(str(source))
         if scene == "single_wxai":
             self._single_scene(spec, assets_dir)
+        elif scene == "whack_wxai":
+            self._whack_scene(spec, assets_dir)
         else:
             self._workbench_scene(spec, assets_dir)
         self.model = spec.compile()
@@ -251,7 +255,9 @@ class TrossenSimulation:
         self.model.vis.quality.offsamples = 8
         self.model.vis.quality.shadowsize = 8192
         self.renderers: dict[tuple[str, int, int], mujoco.Renderer] = {}
-        if scene == "single_wxai":
+        # Scene games run on every physics step (see after_physics_step).
+        self.game = WhackAMole(self.model) if scene == "whack_wxai" else None
+        if scene in ("single_wxai", "whack_wxai"):
             self.arm_model = "wxai_v0"
             self.arms = {"arm": self._arm("arm", "", "left_gripper")}
             self.feeds = {
@@ -300,6 +306,15 @@ class TrossenSimulation:
         spec.worldbody.add_camera(name="scene", pos=scene_pos,
                                   quat=look_at(scene_pos, (0.28, 0, 0.1)), fovy=65)
         add_blocks(spec, 0.1, ((0.23, -0.08), (0.33, 0), (0.43, 0.08)))
+
+    @staticmethod
+    def _whack_scene(spec: mujoco.MjSpec, assets_dir: Path) -> None:
+        whack.add_tron_environment(spec)
+        whack.build_scene(spec)
+        # Low enough to see the neon skyline over the table.
+        scene_pos = (-0.4, -0.85, 0.5)
+        spec.worldbody.add_camera(name="scene", pos=scene_pos,
+                                  quat=look_at(scene_pos, (0.45, 0.05, 0.2)), fovy=58)
 
     @staticmethod
     def _workbench_scene(spec: mujoco.MjSpec, assets_dir: Path) -> None:
@@ -596,6 +611,12 @@ class TrossenSimulation:
                 arm.setpoints[:] = arm.start + (arm.goal - arm.start) * progress
                 self.data.ctrl[arm.actuator_ids] = arm.setpoints
             mujoco.mj_step(self.model, self.data)
+            self.after_physics_step()
+
+    def after_physics_step(self) -> None:
+        """Runs scene logic, such as a game, after each mj_step. Controllers call this."""
+        if self.game is not None:
+            self.game.update(self.data)
 
     def eye_size(self, camera_id: str) -> tuple[int, int]:
         feed = self.feeds[camera_id]
@@ -647,6 +668,8 @@ class TrossenSimulation:
             renderer = mujoco.Renderer(self.model, height=height, width=width)
             # The floor reflection draws the whole scene a second time.
             renderer.scene.flags[mujoco.mjtRndFlag.mjRND_REFLECTION] = 0
+            if self.platform == "whack_wxai":
+                renderer.scene.flags[mujoco.mjtRndFlag.mjRND_FOG] = 1
             if feed.stereo:
                 renderer.scene.stereo = mujoco.mjtStereo.mjSTEREO_SIDEBYSIDE
             self.renderers[key] = renderer

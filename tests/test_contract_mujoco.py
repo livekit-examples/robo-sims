@@ -22,7 +22,7 @@ class MujocoContractTests(unittest.TestCase):
         return MujocoBackend(scene, config), config
 
     def test_both_models_resolve_and_publish_measured_named_state(self):
-        for name in ("trossen-wxai", "trossen-workbench"):
+        for name in ("trossen-wxai", "trossen-wxai-whack", "trossen-workbench"):
             with self.subTest(name=name):
                 backend, config = self.backend(name)
                 for keys in config.feedback_tracks.values():
@@ -80,3 +80,32 @@ class MujocoContractTests(unittest.TestCase):
             broken.bindings["control_interfaces"]["left_arm"]["joint_map"]["left_arm_joint_1"]["joint"] = name
             with self.subTest(name=name), self.assertRaises(ValueError):
                 MujocoBackend(backend.scene, broken)
+
+    def test_whack_mallet_snaps_to_gripper_through_contract_backend(self):
+        import numpy as np
+        backend, config = self.backend("trossen-wxai-whack")
+        scene = backend.scene
+        game, arm = scene.game, scene.arms["arm"]
+        grip = scene.data.site_xpos[game.grip_site].copy()
+        goals = scene._inverse_kinematics(arm, grip + [0, 0, 0.01], np.eye(3), 200)
+        names = config.discovery["control_interfaces"]["arm"]["joint_names"]
+        backend.submit("arm", Trajectory(tuple(names), (3.0,), (tuple(float(g) for g in goals),)))
+        for _ in range(400):
+            backend.step()
+        self.assertTrue(game.held)
+        ee = scene.data.site_xpos[arm.site_id]
+        self.assertLess(np.linalg.norm(scene.data.xpos[game.hammer_body] - ee), 0.01)
+
+    def test_whack_scoring(self):
+        backend, _ = self.backend("trossen-wxai-whack")
+        game, data = backend.scene.game, backend.scene.data
+        mole = game.moles[0]
+        wrong = next(c for c in ("violet", "white", "blue") if c != game.target)
+        mole.color, mole.phase = wrong, "up"
+        game._whack(mole, data, 0.0)
+        self.assertEqual((game.score, game.misses), (0, 1))  # never below zero
+        for expected in (1, 2):
+            mole.color, mole.phase, mole.hit = game.target, "up", False
+            game._whack(mole, data, 0.0)
+            self.assertEqual(game.score, expected)
+        self.assertEqual(game.state()["hits"], 2)

@@ -109,6 +109,9 @@ class MujocoBackend:
                     self.motions.pop(key)
             self.data.ctrl[:] = self.targets
             mujoco.mj_step(self.model, self.data)
+            after_step = getattr(self.scene, "after_physics_step", None)
+            if after_step is not None:
+                after_step()
 
     def feedback(self, interface_ids: list[str]) -> dict:
         joints = [joint for key in interface_ids for joint in self.joints[key].values()]

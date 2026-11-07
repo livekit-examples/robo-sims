@@ -24,6 +24,11 @@ single-arm and two-arm generalization examples. They advertise only the implemen
 `joints.trajectory.v1` operation. They contain no model paths, device addresses,
 camera catalog, or telemetry catalog. `get_robot_config` returns this document
 with `default_video_rate_hz` set to the selected `--fps` (default 12).
+The gateway adds a `simulation_control` extension identifying
+`mujoco.joint_trajectory.v1` and its model-derived position/speed policy.
+The manual `/workspace` connection uses this explicit implementation declaration
+to install the simulation trajectory adapter; robot labels alone never enable it.
+Restart both the simulator and UI after upgrading from a version without this extension.
 
 `configs/*.bindings.json` are local implementation configuration. They reference
 the discovery file relative to the binding file, choose the scene/model, and map

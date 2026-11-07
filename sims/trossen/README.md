@@ -1,4 +1,4 @@
-# Trossen arms (`trossen-wxai`, `trossen-workbench`, participant level)
+# Trossen arms (`trossen-wxai`, `trossen-wxai-whack`, `trossen-workbench`, participant level)
 
 The default `--protocol contract` uses the [generalized gateway](../contract/README.md):
 JSON joint feedback, timed joint trajectories, Portal ownership, and public discovery
@@ -19,6 +19,19 @@ The Workbench robot scene camera is a Stereolabs ZED X Mini, with a 50 mm baseli
 The models come from `assets/trossen_arm_mujoco/`, fetched by `python -m sims fetch-assets` from the `workbench_assets` branch of the Trossen repository, because the `workbench` scene exists only on that branch.
 
 The fixture implements the existing `get_robot_config`, `acquire_control`, and `release_control` RPCs and the advertised v1 data tracks. Only the operator that holds the lease can move either arm. Commands stop on lease owner disconnect or after the 250 ms watchdog for held motion. There is no hardware fault simulation. Each command moves the simulated arm with the timing of the robot in `trossen-livekit/robot/src/arms/trossen_arm.cpp`. For example, grip pose steps at most 8 mm and 0.045 rad toward the controller every 20 ms, and a joint position command moves at most 0.5 rad/s. The fixture has no torque limiter.
+
+## Whack-a-mole (`trossen-wxai-whack`)
+
+The WidowX AI arm from `trossen-wxai` in a Tron-style world (black floor with a glowing grid in LiveKit cyan, #1FD5F9, a neon skyline fading into fog) on a black table with three holes. Each hole
+pops up a violet, white or blue ball at random, and a light bar behind the table lights one
+color. A wooden mallet lies on the table: bring the gripper within 6 cm of the end of its
+handle and it snaps into the gripper (a weld constraint), so pickup works with the
+joint-only contract. Hitting a ball with the mallet head scores +1 when the ball matches
+the lit color, and -1 otherwise (never below 0). The lit color changes after each scoring
+hit, or every 12 s. The game lives in `whack.py` and runs on each physics step through
+`TrossenSimulation.after_physics_step`, which the contract backend also calls.
+`game.state()` returns the score, target color and visible balls, for a future score display.
+Tuning constants (hole layout, timings, mallet size) are at the top of `whack.py`.
 
 ## Run
 

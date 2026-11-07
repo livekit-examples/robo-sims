@@ -162,7 +162,21 @@ class ContractGateway:
     async def _publish(self):
         participant = self.room.local_participant
         await participant.set_attributes({ROLE: "robot", VERSION: "3", OWNER: ""})
-        response = json.dumps(self.config.discovery, allow_nan=False, separators=(",", ":"))
+        discovery = dict(self.config.discovery)
+        discovery["simulation_control"] = {
+            "implementation": "mujoco.joint_trajectory.v1",
+            "policy": {
+                "profile": "joints.trajectory.v1",
+                "max_feedback_age_ms": 1000,
+                "interfaces": {
+                    key: {name: {"min": float(j.limits[0]), "max": float(j.limits[1]),
+                                 "max_velocity": float(j.speed)}
+                          for name, j in joints.items()}
+                    for key, joints in self.backend.joints.items()
+                },
+            },
+        }
+        response = json.dumps(discovery, allow_nan=False, separators=(",", ":"))
 
         @participant.register_rpc_method("get_robot_config")
         def get_config(invocation):
