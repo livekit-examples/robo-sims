@@ -302,19 +302,19 @@ class TrossenSimulation:
                                  diffuse=[0.9, 0.9, 0.9], ambient=[0.35, 0.35, 0.35])
         spec.worldbody.add_geom(name="block_table", type=mujoco.mjtGeom.mjGEOM_BOX,
                                 pos=[0.32, 0, 0.05], size=[0.18, 0.18, 0.05], material="maple")
-        scene_pos = (0.62, -0.48, 0.5)
+        scene_pos = (0.311, -1.274, 0.880)
         spec.worldbody.add_camera(name="scene", pos=scene_pos,
-                                  quat=look_at(scene_pos, (0.28, 0, 0.1)), fovy=65)
+                                  quat=look_at(scene_pos, (0.272, 0.253, 0.363)), fovy=65)
         add_blocks(spec, 0.1, ((0.23, -0.08), (0.33, 0), (0.43, 0.08)))
 
     @staticmethod
     def _whack_scene(spec: mujoco.MjSpec, assets_dir: Path) -> None:
         whack.add_tron_environment(spec)
         whack.build_scene(spec)
-        # Low enough to see the neon skyline over the table.
-        scene_pos = (-0.4, -0.85, 0.5)
+        # From the side and above, looking down at the table.
+        scene_pos = (0.247, -1.477, 0.923)
         spec.worldbody.add_camera(name="scene", pos=scene_pos,
-                                  quat=look_at(scene_pos, (0.45, 0.05, 0.2)), fovy=58)
+                                  quat=look_at(scene_pos, (0.432, 0.306, 0.429)), fovy=58)
 
     @staticmethod
     def _workbench_scene(spec: mujoco.MjSpec, assets_dir: Path) -> None:
