@@ -107,7 +107,7 @@ async def new_identity(settings: ServerSettings, sim_name: str) -> str:
 def create_token(settings: ServerSettings, identity: str) -> str:
     """A token that lets the robot join the room, publish, subscribe and serve RPCs."""
     grants = api.VideoGrants(room_join=True, room=settings.room, can_publish=True,
-                             can_subscribe=True, can_publish_data=True)
+                             can_subscribe=True, can_publish_data=True, can_update_own_metadata=True)
     token = (api.AccessToken(settings.api_key, settings.api_secret)
              .with_identity(identity)
              .with_grants(grants)
@@ -122,6 +122,10 @@ async def credentials(args: argparse.Namespace, sim_name: str) -> Credentials:
     """The URL and token to join with, from --token/LIVEKIT_TOKEN or else a new token."""
     token = args.token or os.environ.get("LIVEKIT_TOKEN")
     if token:
+        if getattr(args, "identity", None):
+            claims = jwt.decode(token, options={"verify_signature": False})
+            if claims.get("sub") != args.identity:
+                raise SystemExit("--identity must match the supplied token's identity")
         url = args.url or os.environ.get("LIVEKIT_URL")
         if not url and args.env_file.is_file():
             url = read_env_file(args.env_file).get("LIVEKIT_URL")
@@ -132,5 +136,5 @@ async def credentials(args: argparse.Namespace, sim_name: str) -> Credentials:
         settings = server_settings(args.env_file)
     except ValueError as error:
         raise SystemExit(str(error)) from None
-    identity = await new_identity(settings, sim_name)
+    identity = getattr(args, "identity", None) or await new_identity(settings, sim_name)
     return Credentials(args.url or settings.url, create_token(settings, identity), identity, settings.room)

@@ -1,5 +1,11 @@
 # Trossen arms (`trossen-wxai`, `trossen-workbench`, participant level)
 
+The default `--protocol contract` uses the [generalized gateway](../contract/README.md):
+JSON joint feedback, timed joint trajectories, Portal ownership, and public discovery
+plus local MuJoCo binding JSON for both scenes. Only implemented trajectory controls
+are advertised. The original VR/gripper and lease behavior described below requires
+`--protocol legacy`.
+
 These simulations run a [Trossen Arm MuJoCo](https://github.com/TrossenRobotics/trossen_arm_mujoco) scene as one LiveKit robot participant. They don't start the robot program in `trossen-livekit/robot/` or need a physical arm: Trossen's `libtrossen_arm` talks to a proprietary arm controller, so the simulation stands in for the robot program instead. It exercises the operator's camera selection, stereo display, joint panel, Quest grip pose, thumbstick gripper velocity, and platform-wide control lease. 
 | Simulation | Platform | Arms | Video feeds |
 |---|---|---|---|
@@ -19,8 +25,8 @@ The fixture implements the existing `get_robot_config`, `acquire_control`, and `
 See the top-level README for setup and credentials. From `simulation/`:
 
 ```sh
-.venv/bin/python -m sims run trossen-workbench
-.venv/bin/python -m sims run trossen-wxai
+.venv/bin/python -m sims run trossen-workbench --protocol legacy
+.venv/bin/python -m sims run trossen-wxai --protocol legacy
 ```
 
 The identity is `simulation-trossen-workbench-<scientist>` or `simulation-trossen-wxai-<scientist>`. The stereo track and the arms come from `get_robot_config`, so no track override is needed.
@@ -33,7 +39,7 @@ Options (`--help` lists them all):
 
 ## Run the probe manually
 
-Keep the simulator running in another terminal. Give the probe two *different* operator tokens for the same room. Their identities must start with `controller-`, for example `controller-test` and `controller-viewer`, with the join, publish, subscribe, and publish data grants. For a local `livekit-server --dev`, see the development token commands in `trossen-livekit/docs/credentials.md`:
+Keep the simulator running with `--protocol legacy` in another terminal. Give the probe two *different* operator tokens for the same room. Their identities must start with `controller-`, for example `controller-test` and `controller-viewer`, with the join, publish, subscribe, and publish data grants. For a local `livekit-server --dev`, see the development token commands in `trossen-livekit/docs/credentials.md`:
 
 ```sh
 export CONTROLLER_TOKEN='<controller-test token>'

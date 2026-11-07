@@ -25,8 +25,10 @@ def add_livekit_arguments(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--url", default=None, help="LiveKit URL (default: LIVEKIT_URL)")
     group.add_argument("--token", default=None,
                        help="join with this token instead of creating one (default: LIVEKIT_TOKEN)")
+    group.add_argument("--identity", default=None,
+                       help="stable robot identity for saved controller bindings (default: pick a free scientist name)")
     group.add_argument("--controller-prefix", default="controller-",
-                       help="identity prefix of the operators that may take control (default: %(default)s)")
+                       help="operator identity prefix for legacy/hardware runners (default: %(default)s)")
 
 
 def parser() -> argparse.ArgumentParser:

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "label": "trossen-wxai",
+  "exclude_data_tracks": [],
+  "exclude_video_tracks": [],
+  "exclude_audio_tracks": [],
+  "default_video_rate_hz": 12,
+  "control": {
+    "scope": "robot",
+    "ownership": "portal_active_operator"
+  },
+  "audio_tracks": {},
+  "control_interfaces": {
+    "arm": {
+      "label": "Arm",
+      "kind": "arm",
+      "frame_id": "arm_base_link",
+      "joint_names": [
+        "arm_joint_1",
+        "arm_joint_2",
+        "arm_joint_3",
+        "arm_joint_4",
+        "arm_joint_5",
+        "arm_joint_6"
+      ],
+      "operations": {
+        "joint_position": {
+          "profile": "joints.trajectory.v1",
+          "command": {
+            "track_name": "/arm/joint_trajectory",
+            "msg_type": "trajectory_msgs/msg/JointTrajectory",
+            "format": "json"
+          },
+          "feedback_tracks": [
+            "/arm/joint_states"
+          ],
+          "required_feedback_tracks": [
+            "/arm/joint_states"
+          ],
+          "presentations": [
+            "joint_sliders"
+          ]
+        }
+      }
+    }
+  }
+}

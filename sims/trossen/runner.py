@@ -1,9 +1,9 @@
 """Runs a Trossen MuJoCo scene as a LiveKit robot participant (participant level).
 
 Trossen's arm driver, libtrossen_arm, talks to a proprietary arm controller,
-so this simulation stands in for the robot program: it serves the same
-get_robot_config, acquire_control and release_control RPCs and the v1 data
-tracks, and moves the simulated arms with the robot's timing.
+so this simulation stands in for the robot program. The default generalized
+contract uses shared JSON trajectory handlers and per-scene bindings. The
+legacy mode serves the original binary protocol, control lease, and robot timing.
 """
 
 from __future__ import annotations
@@ -251,6 +251,13 @@ class SimParticipant:
 
 
 def add_arguments(parser, sim) -> None:
+    from ..contract.config import CONFIGS
+
+    parser.add_argument("--protocol", choices=("contract", "legacy"), default="contract",
+                        help="generalized JSON contract (default) or original binary controller protocol")
+    parser.add_argument("--bindings", type=Path, default=CONFIGS / f"{sim.name}.bindings.json",
+                        help="local MuJoCo bindings and reference to the public discovery document")
+    parser.add_argument("--no-video", action="store_true", help="run contract physics and data without rendering video")
     parser.add_argument("--assets-dir", type=Path, default=Path(os.environ.get("TROSSEN_MUJOCO_ASSETS") or ASSETS),
                         help="Trossen MuJoCo assets directory (default: %(default)s)")
     parser.add_argument("--width", type=int, default=320, help="width of each wrist camera eye")
@@ -266,18 +273,47 @@ async def _run(args, sim_spec) -> int:
     sizes = (args.width, args.height, args.scene_width, args.scene_height)
     if any(size < 2 or size % 2 for size in sizes) or args.fps < 1:
         raise SystemExit("width and height must be positive even numbers, and fps must be positive")
+    config = None
+    model_path = None
+    if args.protocol == "contract":
+        from ..contract.config import Configuration
+
+        config = Configuration.load(args.bindings, args.fps)
+        if config.bindings["scene"] != sim_spec.options["scene"]:
+            raise ValueError("bindings scene does not match the selected simulation")
+        model_path = args.assets_dir / config.bindings["model"]
+    elif args.no_video:
+        raise ValueError("--no-video is available with --protocol contract")
     sim = TrossenSimulation(args.assets_dir, sim_spec.options["scene"], args.width, args.height,
-                            args.scene_width, args.scene_height)
-    if args.check:
-        print(json.dumps(manifest(sim), indent=2))
+                            args.scene_width, args.scene_height, model_path=model_path)
+    try:
+        return await _serve(args, sim_spec, sim, config)
+    finally:
         sim.close()
+
+
+async def _serve(args, sim_spec, sim, config) -> int:
+    backend = None
+    if config is not None:
+        from ..contract.mujoco_backend import MujocoBackend
+
+        backend = MujocoBackend(sim, config)
+        for keys in config.feedback_tracks.values():
+            backend.feedback(keys)  # Validate shared joint-name selection before connecting.
+    if args.check:
+        print(json.dumps(config.discovery if config else manifest(sim), indent=2))
         return 0
     creds = await credentials(args, sim_spec.name)
     if creds.identity:
         LOG.info("Joining room %s as %s", creds.room, creds.identity)
     else:
         LOG.info("Joining with the token from --token or LIVEKIT_TOKEN")
-    bridge = SimParticipant(sim, creds.url, creds.token, args.fps, args.controller_prefix)
+    if config is not None:
+        from ..contract.gateway import ContractGateway
+
+        bridge = ContractGateway(backend, config, creds.url, creds.token, args.fps, video=not args.no_video)
+    else:
+        bridge = SimParticipant(sim, creds.url, creds.token, args.fps, args.controller_prefix)
     loop = asyncio.get_running_loop()
     for interrupt in (signal.SIGINT, signal.SIGTERM):
         try:

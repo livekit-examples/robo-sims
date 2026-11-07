@@ -1,10 +1,15 @@
 # robo-sims
 
-Simulated robots for the LiveKit VR teleop stack in `trossen-livekit/`. One command starts any of them, and each joins the controller app's room as a robot you can select and drive.
+Simulated robots for the LiveKit teleop stack. One command starts each simulation.
+Trossen scenes default to the [generalized contract gateway](sims/contract/README.md),
+with JSON joint feedback and trajectory control configured for one or two arms.
+Use `--protocol legacy` with the original Trossen VR controller. reBot continues
+to use the real robot program's existing protocol.
 
 ```sh
 python -m sims list                       # what can run
 python -m sims run trossen-workbench      # run one
+python -m sims run trossen-workbench --protocol legacy  # original VR controller
 python -m sims run rebot-arm --help       # its options
 ```
 
@@ -52,9 +57,15 @@ All the simulations share one set of credentials:
   ```
 
 - To join with a token you made yourself, set `LIVEKIT_TOKEN` or pass `--token`, together with `LIVEKIT_URL` or `--url`.
+- Use `--identity NAME` for a stable robot identity and saved generalized UI bindings.
+  Supplied tokens must match that identity. Contract mode requires permission to
+  update the robot's own participant attributes; generated tokens include it.
 - For a hardware-level simulation, the token goes to the robot program in its environment, not on its command line. The API secret stays in the launcher.
 
-In the controller app, select the simulation's identity in the Robot list. Its identity doesn't start with `controller-`, so the app lists it as a robot.
+In the legacy controller app, select the simulation's identity in the Robot list.
+The generalized client discovers contract-mode robots through Portal attributes.
+See [gateway setup and profile semantics](sims/contract/README.md) for the new client
+adapter requirements and the self-hosted server schema-storage setting.
 
 `--check` loads a simulation and prints what it provides without joining LiveKit.
 
@@ -68,6 +79,7 @@ In the controller app, select the simulation's identity in the Robot list. Its i
 | `sims/assets.py` | The pinned model sources. |
 | `sims/paths.py` | Where the teleop repo, the robot program and the assets are. `TELEOP_REPO`, `TELEOP_ROBOT_BIN` and `SIM_ASSETS_DIR` override the defaults. |
 | `sims/trossen/` | The Trossen simulations and their LiveKit probe. |
+| `sims/contract/` | Shared generalized gateway, trajectory profile, MuJoCo backend, and per-scene JSON bindings/discovery. |
 | `sims/rebot/` | The reBot emulated hardware and its launcher. |
 | `tools/serial_bridge.py` | Turns a bus served over TCP back into a local serial device. Standard library only. |
 | `docker/rebot-bus/` | The reBot emulated hardware alone, as a container. |

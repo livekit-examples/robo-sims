@@ -2,7 +2,7 @@
 
     python -m sims.trossen.probe --robot <identity>
 
-Run this against a separately started `python -m sims run trossen-workbench`, with two operator tokens for
+Run this against `python -m sims run trossen-workbench --protocol legacy`, with two operator tokens for
 the same room. It exercises the operator protocol without starting robot code.
 """
 

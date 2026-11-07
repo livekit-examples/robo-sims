@@ -206,7 +206,8 @@ class TrossenSimulation:
 
     def __init__(self, assets_dir: Path, scene: str = "workbench",
                  width: int = 320, height: int = 240,
-                 scene_width: int = 960, scene_height: int = 720):
+                 scene_width: int = 960, scene_height: int = 720,
+                 model_path: Path | None = None):
         self.platform = scene
         if scene == "single_wxai":
             source = assets_dir / "wxai" / "wxai_follower.xml"
@@ -214,6 +215,8 @@ class TrossenSimulation:
             source = assets_dir / "workbench" / "scene.xml"
         else:
             raise ValueError(f"Unknown scene: {scene}")
+        if model_path is not None:
+            source = model_path
         if not source.is_file():
             raise FileNotFoundError(f"Trossen MuJoCo scene not found: {source}")
         spec = mujoco.MjSpec.from_file(str(source))

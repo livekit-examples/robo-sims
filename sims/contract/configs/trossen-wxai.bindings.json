@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "scene": "single_wxai",
+  "model": "wxai/wxai_follower.xml",
+  "discovery": "trossen-wxai.discovery.json",
+  "control_interfaces": {
+    "arm": {
+      "backend_arm": "arm",
+      "base_body": "base_link",
+      "end_effector_site": "ee_site",
+      "joint_map": {
+        "arm_joint_1": {
+          "joint": "joint_0",
+          "actuator": "joint_0",
+          "max_velocity": 0.5
+        },
+        "arm_joint_2": {
+          "joint": "joint_1",
+          "actuator": "joint_1",
+          "max_velocity": 0.5
+        },
+        "arm_joint_3": {
+          "joint": "joint_2",
+          "actuator": "joint_2",
+          "max_velocity": 0.5
+        },
+        "arm_joint_4": {
+          "joint": "joint_3",
+          "actuator": "joint_3",
+          "max_velocity": 0.5
+        },
+        "arm_joint_5": {
+          "joint": "joint_4",
+          "actuator": "joint_4",
+          "max_velocity": 0.5
+        },
+        "arm_joint_6": {
+          "joint": "joint_5",
+          "actuator": "joint_5",
+          "max_velocity": 0.5
+        }
+      }
+    }
+  }
+}
