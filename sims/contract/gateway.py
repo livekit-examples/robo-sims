@@ -20,10 +20,14 @@ ROLE, VERSION, OWNER = "lk.portal.role", "lk.portal.version", "lk.portal.active_
 
 class ContractGateway:
     def __init__(self, backend, config: Configuration, url: str, token: str, fps: int,
-                 *, video: bool = True):
+                 *, video: bool = True, operator_prefix: str | None = None):
         self.backend, self.config = backend, config
         self.url, self.token, self.fps = url, token, fps
         self.video = video
+        self.operator_prefix = operator_prefix
+        self.expired = False
+        self._feedback_ready = False
+        self._video_ready = set()
         self.room = SchemaRoom()
         self.stopping = asyncio.Event()
         self.ready = asyncio.Event()
@@ -43,7 +47,7 @@ class ContractGateway:
                 and peer.attributes.get(VERSION) == "3")
 
     def _accepts(self, identity):
-        return self.armed and identity == self.active_operator and self._compatible(identity)
+        return not self.expired and self.armed and identity == self.active_operator and self._compatible(identity)
 
     def _disarm(self):
         self.armed = False
@@ -132,6 +136,8 @@ class ContractGateway:
 
     async def _set_owner(self, invocation):
         caller = invocation.caller_identity
+        if self.expired or (self.operator_prefix and not caller.startswith(self.operator_prefix)):
+            raise rtc.RpcError(2003, "This participant cannot acquire managed control")
         # Participant attributes may arrive just after the first RPC.
         for _ in range(30):
             if self._compatible(caller, ("operator", "observer")):
@@ -190,6 +196,8 @@ class ContractGateway:
                         value, allow_nan=False, separators=(",", ":")).encode()))
                 except rtc.PushFrameError as error:
                     LOG.debug("Feedback dropped: %s", error)
+            self._feedback_ready = True
+            self._mark_ready()
             await asyncio.sleep(0.05)
 
     async def _video(self):
@@ -205,10 +213,16 @@ class ContractGateway:
                         pixels = await loop.run_in_executor(executor, renderer.render)
                         source.capture_frame(rtc.VideoFrame(pixels.shape[1], pixels.shape[0],
                             rtc.VideoBufferType.RGB24, pixels.tobytes()))
+                        self._video_ready.add(key)
+                        self._mark_ready()
                     next_frame = max(next_frame + period, loop.time())
                     await asyncio.sleep(next_frame - loop.time())
             finally:
                 await asyncio.shield(loop.run_in_executor(executor, self.backend.close))
+
+    def _mark_ready(self):
+        if self._feedback_ready and set(self.video_sources) <= self._video_ready:
+            self.ready.set()
 
     def _background_done(self, task):
         if not task.cancelled():
@@ -225,7 +239,6 @@ class ContractGateway:
             self.tasks = [asyncio.create_task(loop()) for loop in loops]
             for task in self.tasks:
                 task.add_done_callback(self._background_done)
-            self.ready.set()
             await self.stopping.wait()
             for task in self.tasks:
                 if task.done() and not task.cancelled():

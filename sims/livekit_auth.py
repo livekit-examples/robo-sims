@@ -63,11 +63,11 @@ def read_env_file(path: Path) -> dict[str, str]:
 
 
 def server_settings(env_file: Path) -> ServerSettings:
-    """Takes each setting from the process environment, or else from env_file."""
+    """Takes each setting from env_file, or else from the process environment."""
     file_values = read_env_file(env_file) if env_file.is_file() else {}
     names = {"url": "LIVEKIT_URL", "api_key": "LIVEKIT_API_KEY",
              "api_secret": "LIVEKIT_API_SECRET", "room": "LIVEKIT_ROOM_NAME"}
-    values = {field: os.environ.get(name) or file_values.get(name, "") for field, name in names.items()}
+    values = {field: file_values.get(name) or os.environ.get(name, "") for field, name in names.items()}
     missing = [names[field] for field, value in values.items() if not value]
     if missing:
         raise ValueError(f"Set {', '.join(missing)} in {env_file} or in the environment")

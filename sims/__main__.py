@@ -31,7 +31,7 @@ def add_livekit_arguments(parser: argparse.ArgumentParser) -> None:
                        help="operator identity prefix for legacy/hardware runners (default: %(default)s)")
 
 
-def parser() -> argparse.ArgumentParser:
+def parser(selected: str | None = None) -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="python -m sims", description=__doc__,
                                    formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = root.add_subparsers(dest="command", required=True)
@@ -42,6 +42,8 @@ def parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="run one simulation")
     sims = run.add_subparsers(dest="sim", required=True, metavar="SIM")
     for sim in SIMULATIONS.values():
+        if selected is not None and sim.name != selected:
+            continue
         sub = sims.add_parser(sim.name, help=sim.summary, description=f"{sim.summary} ({sim.level} level)")
         sub.add_argument("--check", action="store_true",
                          help="load the simulation and print what it provides, without joining LiveKit")
@@ -63,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             fetch.add_argument("--force", action="store_true")
             args = fetch.parse_args(argv[1:], namespace=args)
     else:
-        args = parser().parse_args(argv)
+        args = parser(argv[1] if len(argv) > 1 and argv[0] == "run" else None).parse_args(argv)
 
     if args.command == "list":
         width = max(map(len, SIMULATIONS))

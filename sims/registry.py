@@ -28,6 +28,9 @@ class Simulation:
     module: str
     assets: tuple[str, ...]
     options: dict = field(default_factory=dict)
+    managed_module: str | None = None
+    icon: str = "arm"
+    cleanup_seconds: float = 5
 
     def runner(self) -> ModuleType:
         # Imported on use, so `list` and `fetch-assets` need no MuJoCo or LiveKit.
@@ -38,9 +41,9 @@ SIMULATIONS = {
     sim.name: sim
     for sim in (
         Simulation("trossen-wxai", "one Trossen WidowX AI arm with a wrist D405 and a scene camera",
-                   "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "single_wxai"}),
+                   "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "single_wxai"}, "sims.trossen.managed"),
         Simulation("trossen-workbench", "two Trossen WidowX Pro arms with ZED X wrist and scene cameras",
-                   "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "workbench"}),
+                   "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "workbench"}, "sims.trossen.managed", "dual-arm"),
         Simulation("rebot-arm", "one Seeed reBot B601-DM arm and a scene camera on emulated hardware, driven by the robot program",
                    "hardware", "sims.rebot.runner", ("rebot_b601_dm",), {"platform": "rebot_b601_dm"}),
     )

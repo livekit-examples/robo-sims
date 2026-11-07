@@ -1,0 +1,10 @@
+*
+!requirements.txt
+!sims/
+!sims/**
+!assets/
+!assets/**
+!docker/
+!docker/managed/
+!docker/managed/Dockerfile
+**/__pycache__/

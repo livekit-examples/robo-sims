@@ -6,3 +6,7 @@ __pycache__/
 
 .env.local
 .env
+
+.demo/
+
+.demo-docker/
