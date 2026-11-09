@@ -10,6 +10,7 @@ import numpy as np
 
 from .config import Configuration, ControlKey, GRIPPER, channel_key, operation_joints
 from .trajectory import Trajectory
+from .camera_info import validate_camera_info
 
 
 @dataclass
@@ -111,6 +112,9 @@ class MujocoBackend:
             public_names = [name for key in keys for name in self.joints[key]]
             if len(set(public_names)) != len(public_names):
                 raise ValueError("shared feedback requires globally unique joint names")
+        camera_info = scene.camera_info()
+        validate_camera_info(camera_info)
+        config.discovery["camera_info"] = camera_info
 
     def policy(self):
         """The same versioned capabilities feed manual discovery and managed runs."""

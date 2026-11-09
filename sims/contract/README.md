@@ -76,8 +76,21 @@ Every listed track is required for its operation. The Trossen arm and gripper
 position profiles require exactly one joint-state track, so their operations must
 include `feedback_tracks`.
 
-Cameras are regular LiveKit video publications, discovered dynamically; stereo
-interpretation belongs to client settings.
+Cameras are regular LiveKit video publications. The app discovers them from
+LiveKit. The `get_robot_config` response includes optional `camera_info` metadata
+for each stereo feed. Each entry gives the full video dimensions and the image
+region, intrinsics, and fixed mount-relative extrinsics for each eye.
+
+The simulator computes this metadata from the compiled camera model and the
+selected render dimensions. It uses the same projection as the renderer and
+reports the configured stereo baseline. Simulated lenses have no distortion.
+The metadata describes the rendered simulation, not a measured hardware calibration.
+
+Optical frames use X right, Y down, and Z forward. The parent frame names the
+MuJoCo body that holds the camera. The fixed transform stays valid when a wrist
+moves, but it does not describe the changing wrist pose in the world.
+The simulator adds this metadata before it serves the discovery RPC or prints
+the `--check` document. No calibration update track is published.
 
 Both feedback and command tracks require explicit JSON frame encoding and JSON
 Schema IDs. Definitions are registered through LiveKit's schema API. The pinned

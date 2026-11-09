@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .camera_info import validate_camera_info
+
 TRAJECTORY = "joints.trajectory.v1"
 GRIPPER = "gripper.position.v1"
 JOINT_STATE = "sensor_msgs/msg/JointState"
@@ -78,6 +80,8 @@ class Configuration:
         if not isinstance(doc.get("label"), str) or not doc["label"].strip():
             raise ValueError("discovery label is required")
         positive(doc.get("default_video_rate_hz"), "default_video_rate_hz")
+        if "camera_info" in doc:
+            validate_camera_info(doc["camera_info"])
         if doc.get("control") != {"scope": "robot", "ownership": "portal_active_operator"}:
             raise ValueError("robot-scoped Portal ownership is required")
         for media in ("data", "video", "audio"):

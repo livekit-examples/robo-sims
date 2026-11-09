@@ -656,6 +656,56 @@ class TrossenSimulation:
         width, height = self.eye_size(camera_id)
         return (2 * width if self.feeds[camera_id].stereo else width), height
 
+    def camera_info(self) -> dict:
+        """Calibrate stereo eyes in their fixed mount frames, without creating a renderer."""
+        result = {}
+        for key, feed in self.feeds.items():
+            if feed.stereo is None:
+                continue
+            camera_id = self._named(mujoco.mjtObj.mjOBJ_CAMERA, feed.camera)
+            if self.model.cam_mode[camera_id] != mujoco.mjtCamLight.mjCAMLIGHT_FIXED:
+                raise ValueError("camera_info requires a fixed camera-to-mount transform")
+            camera = mujoco.MjvCamera()
+            camera.type = mujoco.mjtCamera.mjCAMERA_FIXED
+            camera.fixedcamid = camera_id
+            projection = mujoco.mjv_camera2GLCamera(self.model, self.data, camera)
+            if projection.orthographic:
+                raise ValueError("camera_info requires a perspective camera")
+            width, height = self.eye_size(key)
+            span = projection.frustum_top - projection.frustum_bottom
+            half_width = projection.frustum_width or span * width / height / 2
+            intrinsics = {
+                "fx": width * projection.frustum_near / (2 * half_width),
+                "fy": height * projection.frustum_near / span,
+                "cx": width / 2 - width * projection.frustum_center / (2 * half_width),
+                "cy": height * projection.frustum_top / span,
+                "distortion_model": "none", "distortion_coefficients": [],
+            }
+            rotation = np.zeros(9)
+            mujoco.mju_quat2Mat(rotation, self.model.cam_quat[camera_id])
+            rotation = rotation.reshape(3, 3)
+            # MuJoCo looks along -Z with +Y up; optical frames use +Z forward, +Y down.
+            optical = rotation @ np.diag([1.0, -1.0, -1.0])
+            quaternion = np.zeros(4)
+            mujoco.mju_mat2Quat(quaternion, optical.ravel())
+            parent_id = int(self.model.cam_bodyid[camera_id])
+            parent = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, parent_id)
+            if not parent:
+                raise ValueError("camera_info requires a named camera mount")
+            views = {}
+            for index, eye in enumerate(("left", "right")):
+                translation = self.model.cam_pos[camera_id] + index * feed.stereo.baseline * rotation[:, 0]
+                views[eye] = {
+                    "frame_id": f"{feed.camera}_{eye}_optical",
+                    "image_region": {"x": index * width, "y": 0, "width": width, "height": height},
+                    "intrinsics": dict(intrinsics),
+                    "extrinsics": {"parent_frame_id": parent,
+                        "translation": translation.tolist(),
+                        "rotation_xyzw": quaternion[[1, 2, 3, 0]].tolist()},
+                }
+            result[key] = {"track_name": feed.name, "width": 2 * width, "height": height, "views": views}
+        return result
+
     def open_renderers(self) -> None:
         """Create every feed's renderer.
 

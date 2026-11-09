@@ -1,6 +1,7 @@
 """FPS propagation and source pacing without a GPU, credentials, or server."""
 
 import asyncio
+import json
 import time
 import unittest
 from types import SimpleNamespace
@@ -16,6 +17,47 @@ from sims.trossen import managed, runner
 
 
 class VideoTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stereo_calibration_is_serialized_in_the_discovery_rpc(self):
+        from sims.assets import SOURCES
+        from sims.contract.config import CONFIGS
+        from sims.contract.mujoco_backend import MujocoBackend
+        from sims.trossen.simulation import TrossenSimulation
+
+        if not SOURCES["trossen_arm_mujoco"].installed():
+            self.skipTest("fetch Trossen assets")
+        for name in ("trossen-wxai", "trossen-workbench", "trossen-wxai-whack", "trossen-workbench-whack"):
+            with self.subTest(simulation=name):
+                config = Configuration.load(CONFIGS / f"{name}.bindings.json", 12)
+                assets = SOURCES["trossen_arm_mujoco"].path / "assets"
+                scene = TrossenSimulation(assets, config.bindings["scene"], width=320, height=240,
+                    model_path=assets / config.bindings["model"])
+                self.addCleanup(scene.close)
+                backend = MujocoBackend(scene, config)
+                methods = {}
+                def register(name, callback=None):
+                    if callback is not None:
+                        methods[name] = callback
+                        return None
+                    def decorator(callback):
+                        methods[name] = callback
+                        return callback
+                    return decorator
+                participant = Mock(set_attributes=AsyncMock(), publish_track=AsyncMock())
+                participant.register_rpc_method.side_effect = register
+                with (patch("sims.contract.gateway.SchemaRoom", return_value=Mock(local_participant=participant)),
+                      patch("sims.contract.gateway.publish_json", AsyncMock()),
+                      patch("sims.contract.gateway.rtc.LocalVideoTrack.create_video_track", Mock()) as create_track):
+                    gateway = ContractGateway(backend, config, "", "", 12)
+                    await gateway._publish()
+                response = methods["get_robot_config"](SimpleNamespace(payload=""))
+                discovery = json.loads(response)
+                self.assertEqual(discovery["camera_info"], scene.camera_info())
+                published = {call.args[0] for call in create_track.call_args_list}
+                self.assertEqual(len(published), len(scene.feeds))
+                self.assertTrue({c["track_name"] for c in discovery["camera_info"].values()} <= published)
+                # Discovery remains within the current SDK's 15 KiB RPC response limit.
+                self.assertLessEqual(len(response.encode()), 15360)
+
     async def test_managed_rate_reaches_discovery_and_every_encoder(self):
         for fps in (12, 30):
             with self.subTest(fps=fps):

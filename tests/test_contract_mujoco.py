@@ -12,6 +12,67 @@ from sims.contract.trajectory import Trajectory
 @unittest.skipUnless(importlib.util.find_spec("mujoco") and SOURCES["trossen_arm_mujoco"].installed(),
                      "install requirements and fetch Trossen assets")
 class MujocoContractTests(unittest.TestCase):
+    def test_stereo_calibration_matches_render_sizes_optical_axes_and_mounts(self):
+        import math
+        import mujoco
+        import numpy as np
+        for name in ("trossen-wxai", "trossen-wxai-whack", "trossen-workbench", "trossen-workbench-whack"):
+            with self.subTest(model=name):
+                backend, config = self.backend(name)
+                scene = backend.scene
+                info = config.discovery["camera_info"]
+                self.assertEqual(set(info), {key for key, feed in scene.feeds.items() if feed.stereo})
+                for key, camera in info.items():
+                    feed = scene.feeds[key]
+                    camera_id = scene.model.camera(feed.camera).id
+                    parent_id = int(scene.model.cam_bodyid[camera_id])
+                    width, height = scene.eye_size(key)
+                    self.assertEqual(camera["track_name"], feed.name)
+                    self.assertEqual((camera["width"], camera["height"]), scene.render_size(key))
+                    world_rotation = scene.data.cam_xmat[camera_id].reshape(3, 3)
+                    parent_rotation = scene.data.xmat[parent_id].reshape(3, 3)
+                    for index, eye in enumerate(("left", "right")):
+                        view = camera["views"][eye]
+                        self.assertEqual(view["image_region"], {
+                            "x": index * width, "y": 0, "width": width, "height": height})
+                        intrinsic = view["intrinsics"]
+                        focal = height / (2 * math.tan(math.radians(feed.stereo.fovy) / 2))
+                        self.assertAlmostEqual(intrinsic["fx"], focal, delta=1e-4)
+                        self.assertAlmostEqual(intrinsic["fy"], focal, delta=1e-4)
+                        self.assertEqual((intrinsic["cx"], intrinsic["cy"]), (width / 2, height / 2))
+                        self.assertEqual(intrinsic["distortion_model"], "none")
+                        extrinsic = view["extrinsics"]
+                        self.assertEqual(extrinsic["parent_frame_id"], scene.model.body(parent_id).name)
+                        q = np.asarray(extrinsic["rotation_xyzw"])[[3, 0, 1, 2]]
+                        rotation = np.zeros(9)
+                        mujoco.mju_quat2Mat(rotation, q)
+                        expected = world_rotation @ np.diag([1, -1, -1])
+                        np.testing.assert_allclose(parent_rotation @ rotation.reshape(3, 3), expected, atol=1e-8)
+                        position = scene.data.xpos[parent_id] + parent_rotation @ extrinsic["translation"]
+                        np.testing.assert_allclose(position, scene.data.cam_xpos[camera_id] +
+                            index * feed.stereo.baseline * world_rotation[:, 0], atol=1e-8)
+                    left, right = (camera["views"][eye]["extrinsics"]["translation"] for eye in ("left", "right"))
+                    self.assertAlmostEqual(np.linalg.norm(np.asarray(right) - left), feed.stereo.baseline)
+                # Moving an arm must not turn fixed mount-relative metadata into a startup world pose.
+                snapshot = copy.deepcopy(info)
+                scene.data.qpos[0] += 0.2
+                mujoco.mj_forward(scene.model, scene.data)
+                self.assertEqual(scene.camera_info(), snapshot)
+
+    def test_stereo_intrinsics_follow_nondefault_render_resolution(self):
+        from sims.trossen.simulation import TrossenSimulation
+        assets = SOURCES["trossen_arm_mujoco"].path / "assets"
+        first = TrossenSimulation(assets, "single_wxai", width=320, height=240)
+        second = TrossenSimulation(assets, "single_wxai", width=640, height=480)
+        self.addCleanup(first.close)
+        self.addCleanup(second.close)
+        a, b = (s.camera_info()["arm_wrist"] for s in (first, second))
+        self.assertEqual((a["width"], a["height"]), (640, 240))
+        self.assertEqual((b["width"], b["height"]), (1280, 480))
+        for eye in ("left", "right"):
+            for value in ("fx", "fy", "cx", "cy"):
+                self.assertAlmostEqual(b["views"][eye]["intrinsics"][value], 2 * a["views"][eye]["intrinsics"][value])
+
     def test_gripper_moves_coupled_fingers_without_replacing_arm_or_other_gripper(self):
         for model in ("trossen-wxai", "trossen-workbench"):
             with self.subTest(model=model):
