@@ -140,9 +140,8 @@ class Configuration:
                 if command["track_name"] in endpoints:
                     raise ValueError("command destinations must be unambiguous")
                 endpoints.add(command["track_name"])
-                feedback = names(operation["feedback_tracks"], "feedback_tracks")
-                required = names(operation.get("required_feedback_tracks", []), "required_feedback_tracks")
-                if set(required) != set(feedback) or len(feedback) != 1:
+                feedback = names(operation.get("feedback_tracks", []), "feedback_tracks")
+                if len(feedback) != 1:
                     raise ValueError("trajectory profile needs exactly one required joint-state track")
                 expected = ["gripper_controls"] if gripper else ["joint_sliders"]
                 if operation["presentations"] != expected:
@@ -163,7 +162,7 @@ class Configuration:
         tracks: dict[str, list[ControlKey]] = {}
         for key, interface in self.discovery["control_interfaces"].items():
             for operation in interface["operations"].values():
-                for track in operation["feedback_tracks"]:
+                for track in operation.get("feedback_tracks", []):
                     target = channel_key(key, operation)
                     if target not in tracks.setdefault(track, []):
                         tracks[track].append(target)

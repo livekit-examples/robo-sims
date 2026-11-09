@@ -16,6 +16,27 @@ def trajectory(names=("arm_joint_1",), points=((1, (0.1,)),)):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_all_trossen_configs_use_one_feedback_list_for_arm_and_gripper(self):
+        for path in CONFIGS.glob("*.bindings.json"):
+            with self.subTest(config=path.name):
+                config = Configuration.load(path, 12)
+                for interface in config.discovery["control_interfaces"].values():
+                    for operation in interface["operations"].values():
+                        self.assertEqual(len(operation["feedback_tracks"]), 1)
+
+    def test_position_profiles_reject_missing_empty_or_multiple_feedback_tracks(self):
+        original = Configuration.load(CONFIGS / "trossen-wxai.bindings.json", 12)
+        for operation_id in ("joint_position", "gripper_position"):
+            for feedback in (None, [], ["/one", "/two"]):
+                config = copy.deepcopy(original)
+                operation = config.discovery["control_interfaces"]["arm"]["operations"][operation_id]
+                if feedback is None:
+                    del operation["feedback_tracks"]
+                else:
+                    operation["feedback_tracks"] = feedback
+                with self.subTest(operation=operation_id, feedback=feedback), self.assertRaises(ValueError):
+                    config.validate()
+
     def test_gripper_requires_explicit_separate_bound_joint_channel_and_endpoint(self):
         original = Configuration.load(CONFIGS / "trossen-wxai.bindings.json", 12)
         for field, value in (("joint_names", ["arm_joint_1"]), ("control_channel", "primary"),
@@ -59,7 +80,7 @@ class ConfigurationTests(unittest.TestCase):
             elif mutation == "profile":
                 op["profile"] = "arm.cartesian_pose.v1"
             elif mutation == "feedback":
-                op["required_feedback_tracks"] = []
+                op["feedback_tracks"] = []
             elif mutation == "legacy":
                 config.discovery["topics"] = {}
             elif mutation == "version":
@@ -75,7 +96,7 @@ class ConfigurationTests(unittest.TestCase):
         config = Configuration.load(CONFIGS / "trossen-workbench.bindings.json", 12)
         for interface in config.discovery["control_interfaces"].values():
             for op in interface["operations"].values():
-                op["feedback_tracks"] = op["required_feedback_tracks"] = ["/joint_states"]
+                op["feedback_tracks"] = ["/joint_states"]
         config.validate()
         self.assertEqual(config.feedback_tracks, {"/joint_states": ["left_arm", ("left_arm", "gripper"), "right_arm", ("right_arm", "gripper")]})
 

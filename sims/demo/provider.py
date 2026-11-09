@@ -14,16 +14,18 @@ class NativeProvider:
         allowed = ('PATH', 'HOME', 'TMPDIR', 'MUJOCO_GL', 'SIM_ASSETS_DIR', 'DYLD_LIBRARY_PATH',
                    'LD_LIBRARY_PATH', 'PYTHONPATH')
         env = {k: os.environ[k] for k in allowed if k in os.environ}
-        env.update(LIVEKIT_URL=url, LIVEKIT_TOKEN=token, PYTHONUNBUFFERED='1')
-        log = (directory / 'worker.log').open('ab')
+        env.update(LIVEKIT_URL=url, LIVEKIT_TOKEN=token, LIVEKIT_ROOM_NAME=run['room_name'], PYTHONUNBUFFERED='1')
+        log = None if run.get('stream_logs') else (directory / 'worker.log').open('ab')
         try:
             child = await asyncio.create_subprocess_exec(
                 sys.executable, '-m', 'sims.demo.worker', '--id', run['id'],
                 '--simulation', run['simulation_id'], '--directory', str(directory),
-                '--cleanup', str(cleanup), cwd=Path(__file__).resolve().parents[2],
+                '--cleanup', str(cleanup), '--duration', str(run['duration_seconds']),
+                '--fps', str(run['fps']), '--startup', str(run['startup_seconds']), cwd=Path(__file__).resolve().parents[2],
                 env=env, stdout=log, stderr=log, start_new_session=True)
         finally:
-            log.close()
+            if log is not None:
+                log.close()
         self.children[run['id']] = child
         return child.pid
 
@@ -54,7 +56,7 @@ class DockerProvider:
 
     async def start(self, run, directory: Path, token: str, url: str, cleanup: float):
         environment = directory / 'worker.env'
-        environment.write_text(f'LIVEKIT_URL={url}\nLIVEKIT_TOKEN={token}\nMUJOCO_GL=osmesa\n')
+        environment.write_text(f'LIVEKIT_URL={url}\nLIVEKIT_TOKEN={token}\nLIVEKIT_ROOM_NAME={run['room_name']}\nMUJOCO_GL=osmesa\n')
         environment.chmod(0o600)
         name = f"teleop-demo-{run['id']}"
         try:
@@ -64,6 +66,8 @@ class DockerProvider:
                 '--mount', f'type=bind,source={directory},target=/run/session', self.image,
                 'python', '-m', 'sims.demo.worker', '--id', run['id'], '--simulation', run['simulation_id'],
                 '--directory', '/run/session', '--cleanup', str(cleanup), '--log',
+                '--duration', str(run['duration_seconds']), '--fps', str(run['fps']),
+                '--startup', str(run['startup_seconds']),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             _, error = await child.communicate()
             if child.returncode:

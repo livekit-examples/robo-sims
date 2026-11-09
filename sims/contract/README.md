@@ -70,6 +70,12 @@ Each advertised feedback track publishes `sensor_msgs/msg/JointState` JSON at
 20 Hz, with measured joint positions/velocities and an empty `effort` array.
 Stamps use simulation time. Feedback can be per-arm or shared: point both
 operations at one feedback name to publish the union of their named joints.
+
+The discovery field `feedback_tracks` is optional and defaults to an empty list.
+Every listed track is required for its operation. The Trossen arm and gripper
+position profiles require exactly one joint-state track, so their operations must
+include `feedback_tracks`.
+
 Cameras are regular LiveKit video publications, discovered dynamically; stereo
 interpretation belongs to client settings.
 

@@ -9,7 +9,6 @@
     "scope": "robot",
     "ownership": "portal_active_operator"
   },
-  "audio_tracks": {},
   "control_interfaces": {
     "arm": {
       "label": "Arm",
@@ -34,9 +33,6 @@
           "feedback_tracks": [
             "/arm/joint_states"
           ],
-          "required_feedback_tracks": [
-            "/arm/joint_states"
-          ],
           "presentations": [
             "joint_sliders"
           ]
@@ -53,9 +49,6 @@
             "format": "json"
           },
           "feedback_tracks": [
-            "/arm/joint_states"
-          ],
-          "required_feedback_tracks": [
             "/arm/joint_states"
           ],
           "presentations": [

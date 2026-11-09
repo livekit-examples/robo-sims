@@ -90,3 +90,12 @@ adapter requirements and the self-hosted server schema-storage setting.
 ## Planned
 
 These are planned, but not built yet: Trossen Rivet, reBot dual arm, SO-101, a four-wheeled rover, and the rover with a reBot arm. Each new simulation should be hardware level where the robot's drivers allow it.
+
+
+Managed trials use `sims.demo.worker` in local native/Docker execution and in
+a shared Modal Function pool capped at 20 for all scene types. `modal_app.py`
+supplies the hosted API, serialized coordinator, Modal Dict state, FIFO queue and
+recovery jobs. Install `requirements-modal.txt` for deployment and
+hosted tests. The parent teleop repository documents `/try`, both local modes,
+and deployment in `docs/try-teleop-deployment.md`. Direct `python -m sims run`
+continues to use the configured robot room.

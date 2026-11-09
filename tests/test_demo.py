@@ -29,6 +29,7 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         self.s = Supervisor(Path(self.directory.name), 'k' * 32, 'ws://localhost:17880',
                             'devkey', 'secret', provider=self.provider)
         self.s.lk = type('LK', (), {'room': type('Rooms', (), {
+            'list_rooms': AsyncMock(return_value=type('ListRooms', (), {'rooms': []})()),
             'create_room': AsyncMock(), 'delete_room': AsyncMock()})()})()
         self.s.launches = set()
         self.catalog = patch.object(self.s, 'catalog', return_value=[{'id': 'trossen-wxai', 'available': True}])
@@ -55,8 +56,10 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
     async def test_capacity_reserved_before_start_and_one_failure_leaves_other_run(self):
         first = await self.launch()
         second = await self.launch('owner-bbbbbbbbbbbb')
-        with self.assertRaises(web.HTTPTooManyRequests):
-            await self.launch('owner-cccccccccccc')
+        third = await self.launch('owner-cccccccccccc')
+        self.assertEqual(third['state'], 'queued')
+        self.assertEqual(self.s.public(third)['queue_position'], 1)
+        self.assertFalse(self.provider.status(third))
         self.s.begin_stop(first, 'failed')
         first = self.s.owned(first['id'], first['owner'])
         first['stop_at'] = now() - 10000; self.s.save(first)
@@ -64,6 +67,8 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.s.owned(first['id'], first['owner'])['state'], 'failed')
         self.assertTrue(self.provider.status(second))
         self.assertNotEqual(first['room'], second['room'])
+        await asyncio.gather(*self.s.launches)
+        self.assertTrue(self.provider.status(third))
 
     async def test_worker_readiness_sets_fixed_deadline_and_expiry_cleans_room(self):
         run = await self.launch()
