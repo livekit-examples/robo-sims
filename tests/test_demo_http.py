@@ -20,7 +20,7 @@ class HttpTests(unittest.TestCase):
         headers = {'Authorization':'Bearer '+'k'*32, 'X-Demo-Owner':'owner-aaaaaaaaaaaa'}
         with TestClient(app) as client, patch.object(modal_app, 'command', side_effect=lambda action,*args: svc.launch(*args) if action=='launch' else svc.report(*args)), patch.object(modal_app, 'request_dispatch') as spawn:
             self.assertEqual(client.get('/sessions').status_code,401)
-            self.assertEqual(len(client.get('/simulations',headers=headers).json()),4)
+            self.assertEqual(len(client.get('/simulations',headers=headers).json()),len(SUPPORTED))
             self.assertEqual(client.post('/sessions',headers=headers,json={'extra':True}).status_code,422)
             response = client.post('/sessions',headers=headers,json={
                 'simulation_id':SUPPORTED[0], 'request_id':'request-aaaaaaaaaa'})

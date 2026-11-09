@@ -64,9 +64,9 @@ class HostedTests(unittest.TestCase):
         with self.assertRaises(Problem) as caught: action()
         self.assertEqual(caught.exception.status, status)
 
-    def test_forty_computers_all_four_scenes_share_twenty_slots(self):
+    def test_forty_computers_all_scenes_share_twenty_slots(self):
         with ThreadPoolExecutor(12) as pool:
-            runs = list(pool.map(lambda i: self.launch(f'owner-{i:016d}', simulation=SUPPORTED[i%4]), range(40)))
+            runs = list(pool.map(lambda i: self.launch(f'owner-{i:016d}', simulation=SUPPORTED[i % len(SUPPORTED)]), range(40)))
         self.service.dispatch(self.provider)
         records = self.store.records()
         self.assertEqual(sum(r['state'] == 'starting' for r in records), 20)

@@ -23,6 +23,7 @@ class LiveKitContractTests(unittest.IsolatedAsyncioTestCase):
         from sims.contract.mujoco_backend import MujocoBackend
         from sims.contract.rtc_schema import SchemaRoom, matches_json, publish_json
         from sims.contract.schemas import TRAJECTORY_SCHEMA
+        from sims.contract.battery import BATTERY_STATE
         from sims.trossen.simulation import TrossenSimulation
 
         url = "ws://127.0.0.1:17880"
@@ -81,6 +82,9 @@ class LiveKitContractTests(unittest.IsolatedAsyncioTestCase):
                     @peer.on("data_track_published")
                     def published(track):
                         if track.publisher_identity != "robot":
+                            return
+                        if track.info.name.endswith('/battery_state'):
+                            self.assertTrue(matches_json(track, BATTERY_STATE))
                             return
                         self.assertTrue(matches_json(track, JOINT_STATE))
 

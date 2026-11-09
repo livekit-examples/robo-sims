@@ -51,9 +51,18 @@ def _install_seeed(checkout: Path, destination: Path) -> None:
     shutil.copy2(checkout / "LICENSE", destination / "LICENSE")
 
 
+def _install_f1tenth(checkout: Path, destination: Path) -> None:
+    # Preserve the community's meter coordinates and 2.20 m width unmodified.
+    for name in ("LICENSE", "README.md"):
+        shutil.copy2(checkout / name, destination / name)
+    shutil.copytree(checkout / "Spielberg", destination / "Spielberg")
+
+
 SOURCES = {
     source.name: source
     for source in (
+        AssetSource("f1tenth_racetracks", "https://github.com/f1tenth/f1tenth_racetracks.git",
+                    "b95c4eff766f6367d66b310ea20cd2c9563712c0", _install_f1tenth),
         # Trossen Arm MuJoCo, BSD-3-Clause. The workbench scene exists only on
         # its workbench_assets branch.
         AssetSource("trossen_arm_mujoco", "https://github.com/TrossenRobotics/trossen_arm_mujoco.git",

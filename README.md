@@ -15,6 +15,7 @@ python -m sims run rebot-arm --help       # its options
 
 | Simulation | Level | What it is |
 |---|---|---|
+| `f1tenth` | participant | Community-scale formula RC car on Spielberg with an onboard driving camera, speed/steering control and lap telemetry. |
 | `trossen-wxai` | participant | One Trossen WidowX AI arm with a wrist D405 stereo camera and a scene camera. |
 | `trossen-wxai-whack` | participant | Whack-a-mole on the WidowX AI: grab a wooden mallet and hit the pop-up ball that matches the lit color. |
 | `trossen-workbench` | participant | Two Trossen WidowX Pro arms with ZED X Nano wrist cameras, a ZED X Mini scene camera and a scene camera. |
@@ -42,6 +43,7 @@ python3.12 -m venv .venv
 
 | Assets | Source | License |
 |---|---|---|
+| `f1tenth_racetracks` | [f1tenth/f1tenth_racetracks](https://github.com/f1tenth/f1tenth_racetracks) `b95c4ef` | GPL-3.0 |
 | `trossen_arm_mujoco` | [TrossenRobotics/trossen_arm_mujoco](https://github.com/TrossenRobotics/trossen_arm_mujoco) `a208dad` (`workbench_assets` branch) | BSD-3-Clause |
 | `rebot_b601_dm` | [Yang-Ci/ReBot_Arm_DigitalTwin_DM](https://github.com/Yang-Ci/ReBot_Arm_DigitalTwin_DM) `7456d8b` | Apache-2.0 |
 
@@ -81,6 +83,7 @@ adapter requirements and the self-hosted server schema-storage setting.
 | `sims/assets.py` | The pinned model sources. |
 | `sims/paths.py` | Where the teleop repo, the robot program and the assets are. `TELEOP_REPO`, `TELEOP_ROBOT_BIN` and `SIM_ASSETS_DIR` override the defaults. |
 | `sims/trossen/` | The Trossen simulations and their LiveKit probe. |
+| `sims/f1tenth/` | [Formula RC](sims/f1tenth/README.md): community-scale vehicle dynamics, Spielberg scene, Ackermann gateway and runner. |
 | `sims/contract/` | Shared generalized gateway, trajectory profile, MuJoCo backend, and per-scene JSON bindings/discovery. |
 | `sims/rebot/` | The reBot emulated hardware and its launcher. |
 | `tools/serial_bridge.py` | Turns a bus served over TCP back into a local serial device. Standard library only. |

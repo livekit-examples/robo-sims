@@ -40,6 +40,9 @@ class Simulation:
 SIMULATIONS = {
     sim.name: sim
     for sim in (
+        Simulation("f1tenth", "1/10-scale formula RC car on community Spielberg, with onboard driving video",
+                   "participant", "sims.f1tenth.runner", ("f1tenth_racetracks",),
+                   managed_module="sims.f1tenth.managed", icon="car"),
         Simulation("trossen-wxai", "one Trossen WidowX AI arm with a wrist D405 and a scene camera",
                    "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "single_wxai"}, "sims.trossen.managed"),
         Simulation("trossen-wxai-whack", "one Trossen WidowX AI arm playing whack-a-mole with a wooden mallet",

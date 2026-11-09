@@ -68,13 +68,18 @@ async def _request(request, field):
         FfiClient.instance.queue.unsubscribe(queue)
 
 
-async def publish_json(participant, name: str, msg_type: str, definition: dict):
+async def define_json_schema(participant, msg_type: str, definition: dict):
+    """Register an inbound or outbound JSON schema without creating a track."""
     require_sdk()
     request = ffi.FfiRequest()
     request.define_schema.local_participant_handle = participant._ffi_handle.handle
     request.define_schema.schema_id.CopyFrom(schema_id(msg_type))
     request.define_schema.definition = json.dumps(definition, allow_nan=False)
     await _request(request, "define_schema")
+
+
+async def publish_json(participant, name: str, msg_type: str, definition: dict):
+    await define_json_schema(participant, msg_type, definition)
     request = ffi.FfiRequest()
     request.publish_data_track.local_participant_handle = participant._ffi_handle.handle
     options = request.publish_data_track.options

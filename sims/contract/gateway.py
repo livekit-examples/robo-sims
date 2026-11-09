@@ -129,9 +129,7 @@ class ContractGateway:
                 ) != track.info.sid:
                     continue
                 try:
-                    command = Trajectory.parse(frame.payload,
-                        operation.get("joint_names", list(self.backend.joints[interface_id])))
-                    self.backend.submit(interface_id, command)
+                    self._receive_command(track, interface_id, operation, frame.payload)
                 except (ValueError, UnicodeDecodeError, KeyError, TypeError, OverflowError) as error:
                     LOG.warning("Rejected %s command: %s", track.info.name, error)
         finally:
@@ -139,6 +137,25 @@ class ContractGateway:
             self.readers.pop(track.info.sid, None)
             if stream is not None:
                 await stream.aclose()
+
+    def _receive_command(self, track, interface_id, operation, payload):
+        command = Trajectory.parse(payload,
+            operation.get("joint_names", list(self.backend.joints[interface_id])))
+        self.backend.submit(interface_id, command)
+
+    def discovery(self):
+        document = dict(self.config.discovery)
+        document["simulation_control"] = {
+            "implementation": "mujoco.position.v2", "policy": self.backend.policy(),
+        }
+        return document
+
+    async def _publish_feedback(self, participant):
+        for name in self.config.feedback_tracks:
+            self.feedback_tracks[name] = await publish_json(participant, name, JOINT_STATE, JOINT_STATE_SCHEMA)
+
+    def _feedback_value(self, name):
+        return self.backend.feedback(self.config.feedback_tracks[name])
 
     async def _set_owner(self, invocation):
         caller = invocation.caller_identity
@@ -168,11 +185,7 @@ class ContractGateway:
     async def _publish(self):
         participant = self.room.local_participant
         await participant.set_attributes({ROLE: "robot", VERSION: "3", OWNER: ""})
-        discovery = dict(self.config.discovery)
-        discovery["simulation_control"] = {
-            "implementation": "mujoco.position.v2", "policy": self.backend.policy(),
-        }
-        response = json.dumps(discovery, allow_nan=False, separators=(",", ":"))
+        response = json.dumps(self.discovery(), allow_nan=False, separators=(",", ":"))
 
         @participant.register_rpc_method("get_robot_config")
         def get_config(invocation):
@@ -181,8 +194,7 @@ class ContractGateway:
             return response
 
         participant.register_rpc_method("portal.set_active_operator", self._set_owner)
-        for name in self.config.feedback_tracks:
-            self.feedback_tracks[name] = await publish_json(participant, name, JOINT_STATE, JOINT_STATE_SCHEMA)
+        await self._publish_feedback(participant)
         for interface_id in self.config.discovery["control_interfaces"]:
             self.battery_tracks[interface_id] = await publish_json(
                 participant, battery_track(interface_id), BATTERY_STATE, BATTERY_STATE_SCHEMA)
@@ -203,7 +215,7 @@ class ContractGateway:
     async def _telemetry(self):
         while True:
             for name, track in self.feedback_tracks.items():
-                value = self.backend.feedback(self.config.feedback_tracks[name])
+                value = self._feedback_value(name)
                 try:
                     track.try_push(rtc.DataTrackFrame(payload=json.dumps(
                         value, allow_nan=False, separators=(",", ":")).encode()))
