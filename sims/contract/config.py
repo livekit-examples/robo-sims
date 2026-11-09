@@ -93,7 +93,7 @@ class Configuration:
         for interface_id, interface in interfaces.items():
             if not re.fullmatch(r"[a-z][a-z0-9_]*", interface_id):
                 raise ValueError(f"invalid interface ID: {interface_id}")
-            if interface.get("kind") != "arm" or not isinstance(interface.get("label"), str) \
+            if not isinstance(interface.get("label"), str) \
                     or not interface["label"].strip() or not interface.get("frame_id"):
                 raise ValueError(f"invalid arm interface: {interface_id}")
             joints = names(interface.get("joint_names"), "joint_names")
