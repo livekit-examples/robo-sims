@@ -18,6 +18,7 @@ python -m sims run rebot-arm --help       # its options
 | `trossen-wxai` | participant | One Trossen WidowX AI arm with a wrist D405 stereo camera and a scene camera. |
 | `trossen-wxai-whack` | participant | Whack-a-mole on the WidowX AI: grab a wooden mallet and hit the pop-up ball that matches the lit color. |
 | `trossen-workbench` | participant | Two Trossen WidowX Pro arms with ZED X Nano wrist cameras, a ZED X Mini scene camera and a scene camera. |
+| `trossen-workbench-whack` | participant | Whack-a-mole on the Workbench: a bigger table with five holes and a mallet for each arm. Hits by either mallet count. |
 | `rebot-arm` | hardware | One Seeed reBot B601-DM arm with a scene camera. The real robot program drives an emulated Damiao motor bus and opens a rendered camera stream. |
 
 Nothing here uses ROS.

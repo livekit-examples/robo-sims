@@ -125,7 +125,10 @@ class LiveKitContractTests(unittest.IsolatedAsyncioTestCase):
                     if video:
                         await eventually(lambda: all(("operator-one", feed.name) in video_frames
                                                      for feed in scene.feeds.values()), timeout=20)
-                    self.assertEqual(json.loads(await rpc(first, "get_robot_config")), config.discovery)
+                    discovered = json.loads(await rpc(first, "get_robot_config"))
+                    extension = discovered.pop("simulation_control")
+                    self.assertEqual(discovered, config.discovery)
+                    self.assertEqual(extension["implementation"], "mujoco.position.v2")
                     self.assertFalse(gateway.armed)
                     self.assertEqual(first.remote_participants["robot"].attributes[ROLE], "robot")
                     self.assertEqual(first.remote_participants["robot"].attributes[VERSION], "3")
@@ -147,6 +150,34 @@ class LiveKitContractTests(unittest.IsolatedAsyncioTestCase):
                     await eventually(lambda: interface_id in backend.motions)
                     await eventually(lambda: states["operator-one", feedback]["position"][0] > initial + 0.03)
                     self.assertEqual(set(backend.motions), {interface_id})
+
+                    # A separate operation on the same interface remains independent on the wire.
+                    grip = interface["operations"]["gripper_position"]
+                    grip_key = (interface_id, "gripper")
+                    grip_name = grip["joint_names"][0]
+                    gripper_track = await publish_json(first.local_participant,
+                        grip["command"]["track_name"], JOINT_TRAJECTORY, TRAJECTORY_SCHEMA)
+                    await eventually(lambda: any(t.info.sid == gripper_track.info.sid
+                                                 for t, _ in gateway.readers.values()))
+                    state = states["operator-one", feedback]
+                    grip_initial = state["position"][state["name"].index(grip_name)]
+                    goal = 0.044 if grip_initial < 0.022 else 0.0
+                    grip_message = json.dumps({"joint_names": [grip_name], "points": [{
+                        "positions": [goal], "time_from_start": {"sec": 3, "nanosec": 0}}]}).encode()
+                    # Data tracks are lossy and publication precedes subscription readiness.
+                    # Retry only until receipt, then prove motion continues without refresh.
+                    for _ in range(20):
+                        gripper_track.try_push(rtc.DataTrackFrame(payload=grip_message))
+                        await asyncio.sleep(0.05)
+                        if grip_key in backend.motions:
+                            break
+                    self.assertIn(grip_key, backend.motions)
+                    await eventually(lambda: abs(states["operator-one", feedback]["position"][
+                        states["operator-one", feedback]["name"].index(grip_name)] - grip_initial) > 0.004)
+                    self.assertIn(interface_id, backend.motions)
+                    await gripper_track.unpublish()
+                    await eventually(lambda: grip_key not in backend.motions)
+                    self.assertIn(interface_id, backend.motions)
 
                     # Last accepted ownership request wins and cancels the old trajectory.
                     await rpc(second, "portal.set_active_operator", "operator-two")

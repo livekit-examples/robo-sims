@@ -40,6 +40,27 @@
           "presentations": [
             "joint_sliders"
           ]
+        },
+        "gripper_position": {
+          "profile": "gripper.position.v1",
+          "control_channel": "gripper",
+          "joint_names": [
+            "gripper_joint"
+          ],
+          "command": {
+            "track_name": "/gripper/joint_trajectory",
+            "msg_type": "trajectory_msgs/msg/JointTrajectory",
+            "format": "json"
+          },
+          "feedback_tracks": [
+            "/arm/joint_states"
+          ],
+          "required_feedback_tracks": [
+            "/arm/joint_states"
+          ],
+          "presentations": [
+            "gripper_controls"
+          ]
         }
       }
     }

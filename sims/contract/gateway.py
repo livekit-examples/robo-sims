@@ -5,10 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from livekit import rtc
+from ..video_stats import VideoStats
+from ..video import capture_video
 
+from .battery import BATTERY_STATE, BATTERY_STATE_SCHEMA, PERIOD, battery_state, battery_track
 from .config import Configuration, JOINT_STATE
 from .rtc_schema import SchemaRoom, matches_json, publish_json
 from .schemas import JOINT_STATE_SCHEMA
@@ -20,10 +24,11 @@ ROLE, VERSION, OWNER = "lk.portal.role", "lk.portal.version", "lk.portal.active_
 
 class ContractGateway:
     def __init__(self, backend, config: Configuration, url: str, token: str, fps: int,
-                 *, video: bool = True, operator_prefix: str | None = None):
+                 *, video: bool = True, operator_prefix: str | None = None, video_stats: bool = False):
         self.backend, self.config = backend, config
         self.url, self.token, self.fps = url, token, fps
         self.video = video
+        self.video_stats = video_stats
         self.operator_prefix = operator_prefix
         self.expired = False
         self._feedback_ready = False
@@ -38,6 +43,7 @@ class ContractGateway:
         self.sources: dict[tuple[str, str], str] = {}
         self.tasks: list[asyncio.Task] = []
         self.feedback_tracks = {}
+        self.battery_tracks = {}
         self.video_sources = {}
         self._bind_events()
 
@@ -60,10 +66,10 @@ class ContractGateway:
             if endpoint is None or track.info.sid in self.readers:
                 return
             if not matches_json(track, endpoint[1]["command"]["msg_type"]):
-                LOG.warning("Ignored command publication %s: expected JointTrajectory JSON metadata", track.info.name)
+                LOG.warning("Ignored command publication %s: incompatible command JSON metadata", track.info.name)
                 return
             self.sources[track.publisher_identity, track.info.name] = track.info.sid
-            task = asyncio.create_task(self._read_commands(track, endpoint[0]))
+            task = asyncio.create_task(self._read_commands(track, endpoint[0], endpoint[1]))
             self.readers[track.info.sid] = (track, task)
             task.add_done_callback(self._reader_done)
 
@@ -113,7 +119,7 @@ class ContractGateway:
         if not task.cancelled() and task.exception():
             LOG.error("Command subscription failed: %s", task.exception())
 
-    async def _read_commands(self, track, interface_id):
+    async def _read_commands(self, track, interface_id, operation):
         stream = None
         try:
             stream = track.subscribe(buffer_size=1)
@@ -124,7 +130,7 @@ class ContractGateway:
                     continue
                 try:
                     command = Trajectory.parse(frame.payload,
-                        self.config.discovery["control_interfaces"][interface_id]["joint_names"])
+                        operation.get("joint_names", list(self.backend.joints[interface_id])))
                     self.backend.submit(interface_id, command)
                 except (ValueError, UnicodeDecodeError, KeyError, TypeError, OverflowError) as error:
                     LOG.warning("Rejected %s command: %s", track.info.name, error)
@@ -164,17 +170,7 @@ class ContractGateway:
         await participant.set_attributes({ROLE: "robot", VERSION: "3", OWNER: ""})
         discovery = dict(self.config.discovery)
         discovery["simulation_control"] = {
-            "implementation": "mujoco.joint_trajectory.v1",
-            "policy": {
-                "profile": "joints.trajectory.v1",
-                "max_feedback_age_ms": 1000,
-                "interfaces": {
-                    key: {name: {"min": float(j.limits[0]), "max": float(j.limits[1]),
-                                 "max_velocity": float(j.speed)}
-                          for name, j in joints.items()}
-                    for key, joints in self.backend.joints.items()
-                },
-            },
+            "implementation": "mujoco.position.v2", "policy": self.backend.policy(),
         }
         response = json.dumps(discovery, allow_nan=False, separators=(",", ":"))
 
@@ -187,6 +183,9 @@ class ContractGateway:
         participant.register_rpc_method("portal.set_active_operator", self._set_owner)
         for name in self.config.feedback_tracks:
             self.feedback_tracks[name] = await publish_json(participant, name, JOINT_STATE, JOINT_STATE_SCHEMA)
+        for interface_id in self.config.discovery["control_interfaces"]:
+            self.battery_tracks[interface_id] = await publish_json(
+                participant, battery_track(interface_id), BATTERY_STATE, BATTERY_STATE_SCHEMA)
         if self.video:
             for key, feed in self.backend.feeds.items():
                 source = rtc.VideoSource(*self.backend.render_size(key))
@@ -214,24 +213,38 @@ class ContractGateway:
             self._mark_ready()
             await asyncio.sleep(0.05)
 
+    async def _battery(self):
+        while True:
+            for track in self.battery_tracks.values():
+                try:
+                    track.try_push(rtc.DataTrackFrame(payload=json.dumps(
+                        battery_state(), allow_nan=False, separators=(",", ":")).encode()))
+                except rtc.PushFrameError as error:
+                    LOG.debug("Battery state dropped: %s", error)
+            await asyncio.sleep(PERIOD)
+
     async def _video(self):
         loop = asyncio.get_running_loop()
         period = 1 / self.fps
         next_frame = loop.time()
+        stats = None
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix="contract-render") as executor:
             try:
                 await loop.run_in_executor(executor, self.backend.open_renderers)
+                if self.video_stats:
+                    stats = VideoStats(self.fps, LOG)
                 while True:
-                    for key, source in self.video_sources.items():
-                        renderer = self.backend.prepare(key)
-                        pixels = await loop.run_in_executor(executor, renderer.render)
-                        source.capture_frame(rtc.VideoFrame(pixels.shape[1], pixels.shape[0],
-                            rtc.VideoBufferType.RGB24, pixels.tobytes()))
-                        self._video_ready.add(key)
-                        self._mark_ready()
+                    started = time.perf_counter()
+                    await capture_video(self.backend, self.video_sources, executor, stats)
+                    self._video_ready.update(self.video_sources)
+                    self._mark_ready()
+                    if stats:
+                        stats.cycle(started)
                     next_frame = max(next_frame + period, loop.time())
                     await asyncio.sleep(next_frame - loop.time())
             finally:
+                if stats:
+                    stats.report()
                 await asyncio.shield(loop.run_in_executor(executor, self.backend.close))
 
     def _mark_ready(self):
@@ -249,7 +262,7 @@ class ContractGateway:
             await self.room.connect(self.url, self.token, rtc.RoomOptions(auto_subscribe=False))
             await self._publish()
             LOG.info("Contract gateway online as %s", self.room.local_participant.identity)
-            loops = [self._simulate, self._telemetry] + ([self._video] if self.video_sources else [])
+            loops = [self._simulate, self._telemetry, self._battery] + ([self._video] if self.video_sources else [])
             self.tasks = [asyncio.create_task(loop()) for loop in loops]
             for task in self.tasks:
                 task.add_done_callback(self._background_done)

@@ -8,7 +8,7 @@ from .. import mujoco_tools  # noqa: F401 - selects GL before importing MuJoCo
 import mujoco
 import numpy as np
 
-from .config import Configuration
+from .config import Configuration, ControlKey, GRIPPER, channel_key, operation_joints
 from .trajectory import Trajectory
 
 
@@ -31,11 +31,13 @@ class Motion:
 
 class MujocoBackend:
     def __init__(self, scene, config: Configuration):
+        self.config = config
         self.scene = scene
         self.model, self.data = scene.model, scene.data
         self.feeds = scene.feeds
-        self.joints: dict[str, dict[str, Joint]] = {}
-        self.motions: dict[str, Motion] = {}
+        self.batch_rendering = scene.batch_rendering
+        self.joints: dict[ControlKey, dict[str, Joint]] = {}
+        self.motions: dict[ControlKey, Motion] = {}
         self.targets = self.data.ctrl.copy()
         # Keep all scene actuators, including the unadvertised grippers, at their initial pose.
         for arm in scene.arms.values():
@@ -49,30 +51,86 @@ class MujocoBackend:
             expected = scene.arms[binding["backend_arm"]]
             if base != expected.base_id or site != expected.site_id:
                 raise ValueError(f"base/site does not belong to {key}")
-            joints = self.joints[key] = {}
-            for name in config.discovery["control_interfaces"][key]["joint_names"]:
-                spec = binding["joint_map"][name]
-                joint = self._named(mujoco.mjtObj.mjOBJ_JOINT, spec["joint"])
-                actuator = self._named(mujoco.mjtObj.mjOBJ_ACTUATOR, spec["actuator"])
-                if joint in used_joints or actuator in used_actuators:
-                    raise ValueError("joint/actuator bindings must be exclusive to one interface")
-                used_joints.add(joint)
-                used_actuators.add(actuator)
-                if joint not in expected.joint_ids[:6] or actuator not in expected.actuator_ids[:6]:
-                    raise ValueError(f"joint/actuator does not belong to {key}")
-                if self.model.jnt_type[joint] != mujoco.mjtJoint.mjJNT_HINGE \
-                        or not self.model.jnt_limited[joint]:
-                    raise ValueError("trajectory backend requires limited revolute joints in radians")
-                if self.model.actuator_trntype[actuator] != mujoco.mjtTrn.mjTRN_JOINT \
-                        or self.model.actuator_trnid[actuator, 0] != joint \
-                        or not np.allclose(self.model.actuator_gear[actuator], [1, 0, 0, 0, 0, 0]) \
-                        or self.model.actuator_gainprm[actuator, 0] <= 0 \
-                        or not np.isclose(self.model.actuator_biasprm[actuator, 1],
-                                          -self.model.actuator_gainprm[actuator, 0]):
-                    raise ValueError("trajectory backend requires direct joint position servos")
-                joints[name] = Joint(name, int(self.model.jnt_qposadr[joint]),
-                                     int(self.model.jnt_dofadr[joint]), actuator,
-                                     tuple(self.model.jnt_range[joint]), spec["max_velocity"])
+            interface = config.discovery["control_interfaces"][key]
+            for operation in interface["operations"].values():
+                target = channel_key(key, operation)
+                gripper = operation["profile"] == GRIPPER
+                joints = self.joints[target] = {}
+                for name in operation_joints(interface, operation):
+                    spec = binding["gripper"] if gripper else binding["joint_map"][name]
+                    joint = self._named(mujoco.mjtObj.mjOBJ_JOINT, spec["joint"])
+                    actuator = self._named(mujoco.mjtObj.mjOBJ_ACTUATOR, spec["actuator"])
+                    if joint in used_joints or actuator in used_actuators:
+                        raise ValueError("joint/actuator bindings must be exclusive to one control channel")
+                    used_joints.add(joint)
+                    used_actuators.add(actuator)
+                    allowed_joints = expected.joint_ids[6:] if gripper else expected.joint_ids[:6]
+                    allowed_actuators = expected.actuator_ids[6:] if gripper else expected.actuator_ids[:6]
+                    if joint not in allowed_joints or actuator not in allowed_actuators:
+                        raise ValueError(f"joint/actuator does not belong to {key}")
+                    kind = mujoco.mjtJoint.mjJNT_SLIDE if gripper else mujoco.mjtJoint.mjJNT_HINGE
+                    if self.model.jnt_type[joint] != kind or not self.model.jnt_limited[joint]:
+                        raise ValueError("profile requires a limited slide gripper or revolute arm joint")
+                    if self.model.actuator_trntype[actuator] != mujoco.mjtTrn.mjTRN_JOINT \
+                            or self.model.actuator_trnid[actuator, 0] != joint \
+                            or not np.allclose(self.model.actuator_gear[actuator], [1, 0, 0, 0, 0, 0]) \
+                            or self.model.actuator_gainprm[actuator, 0] <= 0 \
+                            or not np.isclose(self.model.actuator_biasprm[actuator, 1],
+                                              -self.model.actuator_gainprm[actuator, 0]):
+                        raise ValueError("trajectory backend requires direct joint position servos")
+                    low, high = self.model.jnt_range[joint]
+                    if self.model.actuator_ctrllimited[actuator]:
+                        lo, hi = self.model.actuator_ctrlrange[actuator]
+                        low, high = max(low, lo), min(high, hi)
+                    if gripper:
+                        coupled = self._named(mujoco.mjtObj.mjOBJ_JOINT, spec["coupled_joint"])
+                        if self.model.jnt_type[coupled] != mujoco.mjtJoint.mjJNT_SLIDE \
+                                or self.model.jnt_bodyid[coupled] == self.model.jnt_bodyid[joint]:
+                            raise ValueError("gripper coupling must connect distinct slide joints")
+                        matches = [i for i in range(self.model.neq)
+                                   if self.model.eq_type[i] == mujoco.mjtEq.mjEQ_JOINT
+                                   and {int(self.model.eq_obj1id[i]), int(self.model.eq_obj2id[i])} == {joint, coupled}
+                                   and self.model.eq_active0[i]
+                                   and np.allclose(self.model.eq_data[i, :5], [0, 1, 0, 0, 0])]
+                        if len(matches) != 1:
+                            raise ValueError("gripper requires verified equal-displacement finger coupling")
+                        if coupled in used_joints or coupled in self.model.actuator_trnid[:, 0][
+                                self.model.actuator_trntype == mujoco.mjtTrn.mjTRN_JOINT]:
+                            raise ValueError("coupled finger cannot be independently actuated")
+                        used_joints.add(coupled)
+                        if not self.model.jnt_limited[coupled]:
+                            raise ValueError("coupled finger requires position limits")
+                        lo, hi = self.model.jnt_range[coupled]
+                        low, high = max(low, lo), min(high, hi)
+                    if low >= high:
+                        raise ValueError("joint and actuator limits do not overlap")
+                    joints[name] = Joint(name, int(self.model.jnt_qposadr[joint]),
+                                         int(self.model.jnt_dofadr[joint]), actuator,
+                                         (float(low), float(high)), spec["max_velocity"])
+        for keys in config.feedback_tracks.values():
+            public_names = [name for key in keys for name in self.joints[key]]
+            if len(set(public_names)) != len(public_names):
+                raise ValueError("shared feedback requires globally unique joint names")
+
+    def policy(self):
+        """The same versioned capabilities feed manual discovery and managed runs."""
+        operations = {}
+        for key, interface in self.config.discovery["control_interfaces"].items():
+            entries = operations[key] = {}
+            for op_id, op in interface["operations"].items():
+                joints = self.joints[channel_key(key, op)]
+                gripper = op["profile"] == GRIPPER
+                entry = entries[op_id] = {
+                    "profile": op["profile"], "control_channel": op.get("control_channel", "primary"),
+                    "joint_names": list(joints), "units": "m" if gripper else "rad",
+                    "joints": {name: {"min": j.limits[0], "max": j.limits[1], "max_velocity": j.speed}
+                               for name, j in joints.items()},
+                }
+                if gripper:
+                    joint = next(iter(joints.values()))
+                    entry.update(coordinate_label="Finger displacement", closed_position=joint.limits[0],
+                                 open_position=joint.limits[1])
+        return {"version": 2, "max_feedback_age_ms": 1000, "operations": operations}
 
     def _named(self, kind, name):
         result = mujoco.mj_name2id(self.model, kind, name)
@@ -80,7 +138,7 @@ class MujocoBackend:
             raise ValueError(f"model is missing {name}")
         return result
 
-    def submit(self, interface_id: str, trajectory: Trajectory) -> None:
+    def submit(self, interface_id: ControlKey, trajectory: Trajectory) -> None:
         joints = self.joints[interface_id]
         selected = [joints[name] for name in trajectory.names]
         if not trajectory.times:
@@ -88,11 +146,11 @@ class MujocoBackend:
             return
         start = tuple(float(self.targets[j.actuator]) for j in selected)
         trajectory.validate_motion(start, [j.limits for j in selected], [j.speed for j in selected])
-        # Replacing one interface cancels its prior motion, leaving other arms alone.
+        # Replacing one channel leaves the same arm's other channels running.
         self.motions.pop(interface_id, None)
         self.motions[interface_id] = Motion(trajectory, float(self.data.time), start)
 
-    def hold(self, interface_id: str | None = None) -> None:
+    def hold(self, interface_id: ControlKey | None = None) -> None:
         for key in self.joints if interface_id is None else (interface_id,):
             self.motions.pop(key, None)
             for joint in self.joints[key].values():
@@ -113,7 +171,7 @@ class MujocoBackend:
             if after_step is not None:
                 after_step()
 
-    def feedback(self, interface_ids: list[str]) -> dict:
+    def feedback(self, interface_ids: list[ControlKey]) -> dict:
         joints = [joint for key in interface_ids for joint in self.joints[key].values()]
         if len({j.name for j in joints}) != len(joints):
             raise ValueError("shared feedback requires globally unique joint names")
@@ -132,6 +190,9 @@ class MujocoBackend:
 
     def prepare(self, key):
         return self.scene.prepare(key)
+
+    def prepare_batch(self, keys):
+        return self.scene.prepare_batch(keys)
 
     def close(self):
         self.scene.close()

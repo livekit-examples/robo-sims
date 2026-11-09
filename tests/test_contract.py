@@ -16,6 +16,20 @@ def trajectory(names=("arm_joint_1",), points=((1, (0.1,)),)):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_gripper_requires_explicit_separate_bound_joint_channel_and_endpoint(self):
+        original = Configuration.load(CONFIGS / "trossen-wxai.bindings.json", 12)
+        for field, value in (("joint_names", ["arm_joint_1"]), ("control_channel", "primary"),
+                             ("joint_names", []), ("control_channel", "bad:channel")):
+            config = copy.deepcopy(original)
+            config.discovery["control_interfaces"]["arm"]["operations"]["gripper_position"][field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                config.validate()
+        gripper = original.discovery["control_interfaces"]["arm"]["operations"]["gripper_position"]
+        command = Trajectory.parse(trajectory(gripper["joint_names"], ((3, (0.04,)),)), gripper["joint_names"])
+        self.assertEqual(command.positions, ((0.04,),))
+        with self.assertRaises(ValueError):
+            Trajectory.parse(trajectory(), gripper["joint_names"])
+
     def test_single_and_dual_share_the_same_profile_and_endpoint_contract(self):
         single = Configuration.load(CONFIGS / "trossen-wxai.bindings.json", 17)
         dual = Configuration.load(CONFIGS / "trossen-workbench.bindings.json", 12)
@@ -26,7 +40,7 @@ class ConfigurationTests(unittest.TestCase):
             self.assertNotIn("video_tracks", config.discovery)
             for interface in config.discovery["control_interfaces"].values():
                 self.assertEqual(len(interface["joint_names"]), 6)
-                self.assertEqual(set(interface["operations"]), {"joint_position"})
+                self.assertEqual(set(interface["operations"]), {"joint_position", "gripper_position"})
                 self.assertEqual(interface["operations"]["joint_position"]["profile"], "joints.trajectory.v1")
 
     def test_rejects_duplicate_keys_and_non_finite_json(self):
@@ -60,10 +74,10 @@ class ConfigurationTests(unittest.TestCase):
     def test_shared_feedback_catalog_is_derived_from_operations(self):
         config = Configuration.load(CONFIGS / "trossen-workbench.bindings.json", 12)
         for interface in config.discovery["control_interfaces"].values():
-            op = interface["operations"]["joint_position"]
-            op["feedback_tracks"] = op["required_feedback_tracks"] = ["/joint_states"]
+            for op in interface["operations"].values():
+                op["feedback_tracks"] = op["required_feedback_tracks"] = ["/joint_states"]
         config.validate()
-        self.assertEqual(config.feedback_tracks, {"/joint_states": ["left_arm", "right_arm"]})
+        self.assertEqual(config.feedback_tracks, {"/joint_states": ["left_arm", ("left_arm", "gripper"), "right_arm", ("right_arm", "gripper")]})
 
 
 class TrajectoryTests(unittest.TestCase):

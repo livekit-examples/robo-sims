@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "scene": "workbench_whack",
+  "model": "workbench/scene.xml",
+  "discovery": "trossen-workbench-whack.discovery.json",
+  "control_interfaces": {
+    "left_arm": {
+      "backend_arm": "left",
+      "base_body": "left_base_link",
+      "end_effector_site": "left_ee_site",
+      "joint_map": {
+        "left_arm_joint_1": {
+          "joint": "left_joint_0",
+          "actuator": "left_joint_0",
+          "max_velocity": 0.5
+        },
+        "left_arm_joint_2": {
+          "joint": "left_joint_1",
+          "actuator": "left_joint_1",
+          "max_velocity": 0.5
+        },
+        "left_arm_joint_3": {
+          "joint": "left_joint_2",
+          "actuator": "left_joint_2",
+          "max_velocity": 0.5
+        },
+        "left_arm_joint_4": {
+          "joint": "left_joint_3",
+          "actuator": "left_joint_3",
+          "max_velocity": 0.5
+        },
+        "left_arm_joint_5": {
+          "joint": "left_joint_4",
+          "actuator": "left_joint_4",
+          "max_velocity": 0.5
+        },
+        "left_arm_joint_6": {
+          "joint": "left_joint_5",
+          "actuator": "left_joint_5",
+          "max_velocity": 0.5
+        }
+      },
+      "gripper": {
+        "name": "left_gripper_joint",
+        "joint": "left_left_carriage_joint",
+        "actuator": "left_gripper",
+        "coupled_joint": "left_right_carriage_joint",
+        "max_velocity": 0.025
+      }
+    },
+    "right_arm": {
+      "backend_arm": "right",
+      "base_body": "right_base_link",
+      "end_effector_site": "right_ee_site",
+      "joint_map": {
+        "right_arm_joint_1": {
+          "joint": "right_joint_0",
+          "actuator": "right_joint_0",
+          "max_velocity": 0.5
+        },
+        "right_arm_joint_2": {
+          "joint": "right_joint_1",
+          "actuator": "right_joint_1",
+          "max_velocity": 0.5
+        },
+        "right_arm_joint_3": {
+          "joint": "right_joint_2",
+          "actuator": "right_joint_2",
+          "max_velocity": 0.5
+        },
+        "right_arm_joint_4": {
+          "joint": "right_joint_3",
+          "actuator": "right_joint_3",
+          "max_velocity": 0.5
+        },
+        "right_arm_joint_5": {
+          "joint": "right_joint_4",
+          "actuator": "right_joint_4",
+          "max_velocity": 0.5
+        },
+        "right_arm_joint_6": {
+          "joint": "right_joint_5",
+          "actuator": "right_joint_5",
+          "max_velocity": 0.5
+        }
+      },
+      "gripper": {
+        "name": "right_gripper_joint",
+        "joint": "right_left_carriage_joint",
+        "actuator": "right_gripper",
+        "coupled_joint": "right_right_carriage_joint",
+        "max_velocity": 0.025
+      }
+    }
+  }
+}

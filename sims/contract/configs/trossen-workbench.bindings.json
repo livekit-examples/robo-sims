@@ -39,6 +39,13 @@
           "actuator": "left_joint_5",
           "max_velocity": 0.5
         }
+      },
+      "gripper": {
+        "name": "left_gripper_joint",
+        "joint": "left_left_carriage_joint",
+        "actuator": "left_gripper",
+        "coupled_joint": "left_right_carriage_joint",
+        "max_velocity": 0.025
       }
     },
     "right_arm": {
@@ -76,6 +83,13 @@
           "actuator": "right_joint_5",
           "max_velocity": 0.5
         }
+      },
+      "gripper": {
+        "name": "right_gripper_joint",
+        "joint": "right_left_carriage_joint",
+        "actuator": "right_gripper",
+        "coupled_joint": "right_right_carriage_joint",
+        "max_velocity": 0.025
       }
     }
   }

@@ -75,6 +75,7 @@ class ManagedProviderTests(unittest.IsolatedAsyncioTestCase):
                             async def rpc(method, payload=''):
                                 return await peer.local_participant.perform_rpc(destination_identity=credentials['robot_identity'], method=method, payload=payload)
                             discovery = json.loads(await rpc('get_robot_config'))
+                            self.assertEqual(credentials['policy'], discovery['simulation_control']['policy'])
                             interface_id = next(iter(discovery['control_interfaces']))
                             interface = discovery['control_interfaces'][interface_id]
                             operation = next(iter(interface['operations'].values()))
@@ -95,6 +96,22 @@ class ManagedProviderTests(unittest.IsolatedAsyncioTestCase):
                             sender = asyncio.create_task(send())
                             try:
                                 await eventually(lambda: states[feedback]['position'][states[feedback]['name'].index(name)] > initial + .02, timeout=8)
+                                grip = interface['operations']['gripper_position']
+                                grip_name = grip['joint_names'][0]
+                                grip_initial = states[feedback]['position'][states[feedback]['name'].index(grip_name)]
+                                goal = .044 if grip_initial < .022 else 0.0
+                                grip_track = await publish_json(peer.local_participant, grip['command']['track_name'],
+                                                               grip['command']['msg_type'], TRAJECTORY_SCHEMA)
+                                grip_message = json.dumps({'joint_names': [grip_name], 'points': [
+                                    {'positions': [goal], 'time_from_start': {'sec': 3, 'nanosec': 0}}]}).encode()
+                                for _ in range(60):
+                                    grip_track.try_push(rtc.DataTrackFrame(payload=grip_message))
+                                    await asyncio.sleep(.1)
+                                    moved = states[feedback]['position'][states[feedback]['name'].index(grip_name)]
+                                    if abs(moved - grip_initial) > .004:
+                                        break
+                                self.assertGreater(abs(moved - grip_initial), .004)
+
                             finally:
                                 sender.cancel()
                                 await asyncio.gather(sender, return_exceptions=True)

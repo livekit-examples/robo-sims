@@ -22,7 +22,7 @@ async def serve(args):
             raise ValueError('This simulation does not support managed discovery.')
         module = importlib.import_module(spec.managed_module)
         gateway, policy = module.create(spec, os.environ['LIVEKIT_URL'], os.environ['LIVEKIT_TOKEN'],
-                                        f'demo-op-{args.id}-')
+                                        f'demo-op-{args.id}-', fps=args.fps)
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, gateway.stopping.set)
@@ -73,8 +73,11 @@ def main():
     parser.add_argument('--directory', required=True)
     parser.add_argument('--startup', type=float, default=45)
     parser.add_argument('--cleanup', type=float, default=5)
+    parser.add_argument('--fps', type=int, default=12)
     parser.add_argument('--log', action='store_true')
     args = parser.parse_args()
+    if args.fps < 1:
+        parser.error('--fps must be a positive integer')
     if args.log:
         stream = (Path(args.directory) / 'worker.log').open('ab', buffering=0)
         os.dup2(stream.fileno(), 1)

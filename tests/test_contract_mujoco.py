@@ -12,6 +12,57 @@ from sims.contract.trajectory import Trajectory
 @unittest.skipUnless(importlib.util.find_spec("mujoco") and SOURCES["trossen_arm_mujoco"].installed(),
                      "install requirements and fetch Trossen assets")
 class MujocoContractTests(unittest.TestCase):
+    def test_gripper_moves_coupled_fingers_without_replacing_arm_or_other_gripper(self):
+        for model in ("trossen-wxai", "trossen-workbench"):
+            with self.subTest(model=model):
+                backend, config = self.backend(model)
+                arm = next(iter(config.discovery["control_interfaces"]))
+                key = (arm, "gripper")
+                name, joint = next(iter(backend.joints[key].items()))
+                start = backend.feedback([key])["position"][0]
+                goal = joint.limits[1] if start < 0.022 else joint.limits[0]
+                arm_name, arm_joint = next(iter(backend.joints[arm].items()))
+                arm_start = backend.feedback([arm])["position"][0]
+                backend.submit(arm, Trajectory((arm_name,), (8.0,), ((arm_start + 0.1,),)))
+                backend.submit(key, Trajectory((name,), (3.0,), ((goal,),)))
+                other = next((k for k in backend.joints if isinstance(k, tuple) and k != key), None)
+                if other:
+                    other_name = next(iter(backend.joints[other]))
+                    backend.submit(other, Trajectory((other_name,), (8.0,), ((0.03,),)))
+                for _ in range(200):
+                    backend.step()
+                moved = backend.feedback([key])["position"][0]
+                self.assertGreater(abs(moved - start), 0.01)
+                binding = config.bindings["control_interfaces"][arm]["gripper"]
+                import mujoco
+                coupled = backend.model.joint(binding["coupled_joint"]).id
+                self.assertAlmostEqual(moved, backend.data.qpos[backend.model.jnt_qposadr[coupled]], delta=0.001)
+                before = backend.motions[key]
+                with self.assertRaises(ValueError):
+                    backend.submit(key, Trajectory((name,), (0.01,), ((0.5,),)))
+                self.assertIs(backend.motions[key], before)
+                backend.submit(key, Trajectory((name,), (), ()))
+                self.assertNotIn(key, backend.motions)
+                self.assertIn(arm, backend.motions)
+                if other:
+                    self.assertIn(other, backend.motions)
+                self.assertAlmostEqual(backend.targets[joint.actuator], moved, delta=1e-8)
+                policy = backend.policy()["operations"][arm]["gripper_position"]
+                self.assertEqual(policy["units"], "m")
+                self.assertEqual(policy["joint_names"], [name])
+                backend.hold()
+                self.assertFalse(backend.motions)
+
+    def test_gripper_rejects_wrong_arm_actuator_or_missing_coupling(self):
+        from sims.contract.mujoco_backend import MujocoBackend
+        backend, config = self.backend("trossen-workbench")
+        for field, value in (("actuator", "right_gripper"), ("joint", "left_joint_0"),
+                             ("coupled_joint", "right_right_carriage_joint")):
+            broken = copy.deepcopy(config)
+            broken.bindings["control_interfaces"]["left_arm"]["gripper"][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                MujocoBackend(backend.scene, broken)
+
     def backend(self, name):
         from sims.contract.mujoco_backend import MujocoBackend
         from sims.trossen.simulation import TrossenSimulation
@@ -22,14 +73,14 @@ class MujocoContractTests(unittest.TestCase):
         return MujocoBackend(scene, config), config
 
     def test_both_models_resolve_and_publish_measured_named_state(self):
-        for name in ("trossen-wxai", "trossen-wxai-whack", "trossen-workbench"):
+        for name in ("trossen-wxai", "trossen-wxai-whack", "trossen-workbench", "trossen-workbench-whack"):
             with self.subTest(name=name):
                 backend, config = self.backend(name)
                 for keys in config.feedback_tracks.values():
                     state = backend.feedback(keys)
-                    self.assertEqual(len(state["name"]), 6)
-                    self.assertEqual(len(state["position"]), 6)
-                    self.assertEqual(len(state["velocity"]), 6)
+                    self.assertEqual(len(state["name"]), 7)
+                    self.assertEqual(len(state["position"]), 7)
+                    self.assertEqual(len(state["velocity"]), 7)
                     self.assertEqual(state["effort"], [])
 
     def test_dual_arm_independent_motion_and_cancel(self):
@@ -81,20 +132,53 @@ class MujocoContractTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 MujocoBackend(backend.scene, broken)
 
-    def test_whack_mallet_snaps_to_gripper_through_contract_backend(self):
+    def _grab_mallet(self, backend, config, interface, arm_id, hammer_index):
         import numpy as np
-        backend, config = self.backend("trossen-wxai-whack")
         scene = backend.scene
-        game, arm = scene.game, scene.arms["arm"]
-        grip = scene.data.site_xpos[game.grip_site].copy()
-        goals = scene._inverse_kinematics(arm, grip + [0, 0, 0.01], np.eye(3), 200)
-        names = config.discovery["control_interfaces"]["arm"]["joint_names"]
-        backend.submit("arm", Trajectory(tuple(names), (3.0,), (tuple(float(g) for g in goals),)))
-        for _ in range(400):
+        arm, hammer = scene.arms[arm_id], scene.game.hammers[hammer_index]
+        grip = scene.data.site_xpos[hammer.grip_site].copy()
+        goals = scene._inverse_kinematics(arm, grip + [0, 0, 0.01], np.eye(3), 300)
+        names = config.discovery["control_interfaces"][interface]["joint_names"]
+        start = [backend.feedback([interface])["position"][i] for i in range(len(names))]
+        duration = max(3.0, 1.2 * max(abs(g - p) for g, p in zip(goals, start)) / 0.5)
+        backend.submit(interface, Trajectory(tuple(names), (duration,), (tuple(float(g) for g in goals),)))
+        for _ in range(int(duration * 100) + 100):
             backend.step()
-        self.assertTrue(game.held)
+        self.assertIsNotNone(hammer.held_by)
         ee = scene.data.site_xpos[arm.site_id]
-        self.assertLess(np.linalg.norm(scene.data.xpos[game.hammer_body] - ee), 0.01)
+        self.assertLess(np.linalg.norm(scene.data.xpos[hammer.body] - ee), 0.01)
+
+    def test_whack_mallet_snaps_to_gripper_through_contract_backend(self):
+        backend, config = self.backend("trossen-wxai-whack")
+        self._grab_mallet(backend, config, "arm", "arm", 0)
+        self.assertTrue(backend.scene.game.held)
+
+    def test_workbench_whack_each_arm_picks_up_a_mallet(self):
+        backend, config = self.backend("trossen-workbench-whack")
+        game = backend.scene.game
+        self.assertEqual((len(game.moles), len(game.hammers)), (5, 2))
+        self._grab_mallet(backend, config, "left_arm", "left", 0)
+        self._grab_mallet(backend, config, "right_arm", "right", 1)
+        self.assertEqual(game.state()["hammers"], ["left", "right"])
+
+    def test_workbench_whack_either_mallet_scores(self):
+        import mujoco
+        from sims.trossen import whack
+        backend, _ = self.backend("trossen-workbench-whack")
+        scene = backend.scene
+        model, data, game = scene.model, scene.data, scene.game
+        head_x = whack.HANDLE_LENGTH - whack.GRIP_FROM_END
+        for expected, (hammer, mole) in enumerate(zip(game.hammers, game.moles[:2]), start=1):
+            # Stand the mallet upright with its head face resting into an up ball.
+            mole.color, mole.phase, mole.hit = game.target, "up", False
+            data.mocap_pos[mole.mocap, 2] = game.layout.ball_up_z
+            ball = data.mocap_pos[mole.mocap]
+            data.qpos[hammer.qpos:hammer.qpos + 3] = [
+                ball[0] - head_x, ball[1], ball[2] + whack.BALL_RADIUS + whack.HEAD_HALF_LENGTH - 0.005]
+            data.qpos[hammer.qpos + 3:hammer.qpos + 7] = [1, 0, 0, 0]
+            mujoco.mj_forward(model, data)
+            game._check_hits(data, float(data.time))
+            self.assertEqual(game.score, expected)
 
     def test_whack_scoring(self):
         backend, _ = self.backend("trossen-wxai-whack")

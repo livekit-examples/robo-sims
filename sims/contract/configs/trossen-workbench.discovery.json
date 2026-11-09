@@ -40,6 +40,27 @@
           "presentations": [
             "joint_sliders"
           ]
+        },
+        "gripper_position": {
+          "profile": "gripper.position.v1",
+          "control_channel": "gripper",
+          "joint_names": [
+            "left_gripper_joint"
+          ],
+          "command": {
+            "track_name": "/left_gripper/joint_trajectory",
+            "msg_type": "trajectory_msgs/msg/JointTrajectory",
+            "format": "json"
+          },
+          "feedback_tracks": [
+            "/left_arm/joint_states"
+          ],
+          "required_feedback_tracks": [
+            "/left_arm/joint_states"
+          ],
+          "presentations": [
+            "gripper_controls"
+          ]
         }
       }
     },
@@ -71,6 +92,27 @@
           ],
           "presentations": [
             "joint_sliders"
+          ]
+        },
+        "gripper_position": {
+          "profile": "gripper.position.v1",
+          "control_channel": "gripper",
+          "joint_names": [
+            "right_gripper_joint"
+          ],
+          "command": {
+            "track_name": "/right_gripper/joint_trajectory",
+            "msg_type": "trajectory_msgs/msg/JointTrajectory",
+            "format": "json"
+          },
+          "feedback_tracks": [
+            "/right_arm/joint_states"
+          ],
+          "required_feedback_tracks": [
+            "/right_arm/joint_states"
+          ],
+          "presentations": [
+            "gripper_controls"
           ]
         }
       }

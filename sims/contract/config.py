@@ -9,9 +9,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 TRAJECTORY = "joints.trajectory.v1"
+GRIPPER = "gripper.position.v1"
 JOINT_STATE = "sensor_msgs/msg/JointState"
 JOINT_TRAJECTORY = "trajectory_msgs/msg/JointTrajectory"
 CONFIGS = Path(__file__).with_name("configs")
+ControlKey = str | tuple[str, str]
+
+
+def channel_key(interface_id: str, operation: dict) -> ControlKey:
+    channel = operation.get("control_channel", "primary")
+    return interface_id if channel == "primary" else (interface_id, channel)
+
+
+def operation_joints(interface, operation):
+    return operation.get("joint_names", interface["joint_names"])
 
 
 def unique_object(pairs):
@@ -99,11 +110,29 @@ class Configuration:
             operations = interface.get("operations")
             if not isinstance(operations, dict) or not operations:
                 raise ValueError("an arm needs an implemented operation")
+            channels = set()
             for operation_id, operation in operations.items():
                 if not re.fullmatch(r"[a-z][a-z0-9_]*", operation_id):
                     raise ValueError(f"invalid operation ID: {operation_id}")
-                if operation["profile"] != TRAJECTORY:
+                if operation["profile"] not in (TRAJECTORY, GRIPPER):
                     raise ValueError(f"profile is not implemented: {operation['profile']}")
+                channel = operation.get("control_channel", "primary")
+                if not isinstance(channel, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", channel) \
+                        or channel in channels:
+                    raise ValueError("simulation requires one implemented operation per control channel")
+                channels.add(channel)
+                selected = names(operation_joints(interface, operation), "operation joint_names")
+                gripper = operation["profile"] == GRIPPER
+                if gripper:
+                    spec = binding.get("gripper", {})
+                    if len(selected) != 1 or selected != [spec.get("name")] or channel == "primary":
+                        raise ValueError("gripper requires one explicit bound joint and an independent channel")
+                    if "joint_names" not in operation or not spec.get("joint") or not spec.get("actuator") \
+                            or not spec.get("coupled_joint"):
+                        raise ValueError("gripper joint, actuator and coupling bindings are required")
+                    positive(spec.get("max_velocity"), "gripper max_velocity")
+                elif not set(selected) <= set(joints):
+                    raise ValueError("arm operation selects unbound joints")
                 command = operation["command"]
                 if command["msg_type"] != JOINT_TRAJECTORY or command["format"] != "json" \
                         or not isinstance(command["track_name"], str) or not command["track_name"]:
@@ -115,25 +144,27 @@ class Configuration:
                 required = names(operation.get("required_feedback_tracks", []), "required_feedback_tracks")
                 if set(required) != set(feedback) or len(feedback) != 1:
                     raise ValueError("trajectory profile needs exactly one required joint-state track")
-                if operation["presentations"] != ["joint_sliders"]:
-                    raise ValueError("trajectory profile supports joint_sliders")
+                expected = ["gripper_controls"] if gripper else ["joint_sliders"]
+                if operation["presentations"] != expected:
+                    raise ValueError(f"profile supports {expected}")
                 if any(re.fullmatch(p, feedback[0]) for p in doc.get("exclude_data_tracks", [])):
                     raise ValueError("required joint feedback cannot be excluded")
         if endpoints & set(self.feedback_tracks):
             raise ValueError("command and feedback tracks cannot overlap")
 
     @property
-    def command_tracks(self) -> dict[str, tuple[str, dict]]:
-        return {op["command"]["track_name"]: (key, op)
+    def command_tracks(self) -> dict[str, tuple[ControlKey, dict]]:
+        return {op["command"]["track_name"]: (channel_key(key, op), op)
                 for key, interface in self.discovery["control_interfaces"].items()
                 for op in interface["operations"].values()}
 
     @property
-    def feedback_tracks(self) -> dict[str, list[str]]:
-        tracks: dict[str, list[str]] = {}
+    def feedback_tracks(self) -> dict[str, list[ControlKey]]:
+        tracks: dict[str, list[ControlKey]] = {}
         for key, interface in self.discovery["control_interfaces"].items():
             for operation in interface["operations"].values():
                 for track in operation["feedback_tracks"]:
-                    if key not in tracks.setdefault(track, []):
-                        tracks[track].append(key)
+                    target = channel_key(key, operation)
+                    if target not in tracks.setdefault(track, []):
+                        tracks[track].append(target)
         return tracks

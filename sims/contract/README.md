@@ -21,11 +21,11 @@ the generalized UI to restore saved bindings. Run each identity only once per ro
 
 `configs/*.discovery.json` are public robot descriptions, derived from the
 single-arm and two-arm generalization examples. They advertise only the implemented
-`joints.trajectory.v1` operation. They contain no model paths, device addresses,
+`joints.trajectory.v1` and `gripper.position.v1` operations. They contain no model paths, device addresses,
 camera catalog, or telemetry catalog. `get_robot_config` returns this document
 with `default_video_rate_hz` set to the selected `--fps` (default 12).
 The gateway adds a `simulation_control` extension identifying
-`mujoco.joint_trajectory.v1` and its model-derived position/speed policy.
+`mujoco.position.v2` and its per-operation position/speed policy.
 The manual `/workspace` connection uses this explicit implementation declaration
 to install the simulation trajectory adapter; robot labels alone never enable it.
 Restart both the simulator and UI after upgrading from a version without this extension.
@@ -108,10 +108,24 @@ matched by the client adapter before enabling its controls:
   ownership/track lifecycle above cancels them. Client mode changes/releases
   must send the explicit cancellation, or release ownership.
 
-The six public arm joints exclude the gripper, which holds its initial target.
-Joint velocity, Cartesian/VR, gripper controls, home, and clear-fault actions are
-not advertised. They need separate executable profile implementations; the generic
-examples alone do not enable them. The legacy mode retains those existing controls.
+The six public arm joints exclude the gripper. Each arm also advertises
+`operations.gripper_position`, profile `gripper.position.v1`, on its independent
+`gripper` channel. Its explicit joint selector uses a single carriage displacement
+in meters (0–0.044 m in the pinned models), with a 0.025 m/s target speed cap.
+The two slide joints have verified equal-displacement coupling and one position
+actuator; this coordinate is not the full jaw gap. A separate gripper trajectory
+endpoint accepts position-only single-joint trajectories and empty-points cancellation.
+Arm and gripper trajectories run concurrently. Shared feedback contains their named
+joint union, while the arm's interface joint list stays at six.
+
+Gripper Open/Close targets come from the model-derived policy. Cancellation holds
+measured position; it never opens automatically and does not guarantee preserved
+gripping force. Actuator force limits remain those of the model. Contact force,
+stall, grasp success, and effort commands are not advertised. Manual discovery and
+managed sessions share policy generation, units, limits, and command semantics.
+
+Joint velocity, Cartesian/VR, home, and clear-fault actions still require separate
+executable profiles. Legacy mode retains its existing controls.
 
 ## Validation
 
@@ -133,3 +147,9 @@ loss. The video variant checks received decoded frames from every camera.
 The reBot emulated bus remains independent of this gateway. Its real C++ robot
 program still serves its existing protocol. Generalized reBot discovery/control
 must be added to that program's gateway to keep testing the real driver path.
+
+The browser refreshes position targets at 200 ms only after explicit operator input
+to tolerate lossy data-track delivery and initial subscription timing. The backend
+still completes each accepted finite trajectory without a refresh. Mounting or
+arming sends no target; disarm/reconnect clears the browser's target cache. Target
+values are requests, not acknowledged action results.
