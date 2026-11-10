@@ -13,9 +13,10 @@ from ..video_stats import VideoStats
 from ..video import capture_video
 
 from .battery import BATTERY_STATE, BATTERY_STATE_SCHEMA, PERIOD, battery_state, battery_track
-from .config import Configuration, JOINT_STATE
+from .config import CARTESIAN, Configuration, JOINT_STATE, POSE_STAMPED, interface_of
+from .pose import parse_pose
 from .rtc_schema import SchemaRoom, matches_json, publish_json
-from .schemas import JOINT_STATE_SCHEMA
+from .schemas import JOINT_STATE_SCHEMA, POSE_STAMPED_SCHEMA
 from .trajectory import Trajectory
 
 LOG = logging.getLogger("sims.contract")
@@ -139,6 +140,10 @@ class ContractGateway:
                 await stream.aclose()
 
     def _receive_command(self, track, interface_id, operation, payload):
+        if operation["profile"] == CARTESIAN:
+            frame = self.config.discovery["control_interfaces"][interface_of(interface_id)]["frame_id"]
+            self.backend.submit_pose(interface_id, parse_pose(payload, frame))
+            return
         command = Trajectory.parse(payload,
             operation.get("joint_names", list(self.backend.joints[interface_id])))
         self.backend.submit(interface_id, command)
@@ -153,8 +158,12 @@ class ContractGateway:
     async def _publish_feedback(self, participant):
         for name in self.config.feedback_tracks:
             self.feedback_tracks[name] = await publish_json(participant, name, JOINT_STATE, JOINT_STATE_SCHEMA)
+        for name in self.config.pose_tracks:
+            self.feedback_tracks[name] = await publish_json(participant, name, POSE_STAMPED, POSE_STAMPED_SCHEMA)
 
     def _feedback_value(self, name):
+        if name in self.config.pose_tracks:
+            return self.backend.pose_feedback(self.config.pose_tracks[name])
         return self.backend.feedback(self.config.feedback_tracks[name])
 
     async def _set_owner(self, invocation):

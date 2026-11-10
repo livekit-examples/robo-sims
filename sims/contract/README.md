@@ -21,7 +21,7 @@ the generalized UI to restore saved bindings. Run each identity only once per ro
 
 `configs/*.discovery.json` are public robot descriptions, derived from the
 single-arm and two-arm generalization examples. They advertise only the implemented
-`joints.trajectory.v1` and `gripper.position.v1` operations. They contain no model paths, device addresses,
+`joints.trajectory.v1`, `gripper.position.v1` and `arm.cartesian_pose.v1` operations. They contain no model paths, device addresses,
 camera catalog, or telemetry catalog. `get_robot_config` returns this document
 with `default_video_rate_hz` set to the selected `--fps` (default 12).
 The gateway adds a `simulation_control` extension identifying
@@ -126,6 +126,23 @@ matched by the client adapter before enabling its controls:
 - Finite trajectories run to completion without a streaming heartbeat. The
   ownership/track lifecycle above cancels them. Client mode changes/releases
   must send the explicit cancellation, or release ownership.
+
+## Cartesian pose (VR)
+
+Each arm also advertises `operations.cartesian_pose`, profile `arm.cartesian_pose.v1`, with
+the `vr` presentation. It shares the primary channel with `joint_position`, so the
+operator uses one of the two at a time. Both operations drive the same six joints.
+
+- Command: `geometry_msgs/msg/PoseStamped` JSON on `/<arm>/pose_command`. The pose is the
+  end-effector target in the arm base frame, in meters and as a unit quaternion (x, y, z, w).
+  The `frame_id` is empty or the interface `frame_id`. Targets must lie within 2 m of the base.
+- Feedback: the current end-effector pose, as `PoseStamped` JSON on `/<arm>/end_effector_pose`
+  at 20 Hz. The browser needs this pose to start a grip-relative motion and to hold on release.
+- The simulator solves inverse kinematics from the current commanded joints. Position has more
+  weight than orientation. If the target is unreachable, the arm moves to the nearest pose that
+  the joint limits allow.
+- The arm moves at the configured joint speed limits. A new command replaces the old one.
+  Closing the command track holds the measured joint positions, as for joint trajectories.
 
 The six public arm joints exclude the gripper. Each arm also advertises
 `operations.gripper_position`, profile `gripper.position.v1`, on its independent

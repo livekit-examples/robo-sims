@@ -5,6 +5,7 @@ import json
 import unittest
 
 from sims.contract.config import CONFIGS, Configuration, load_json
+from sims.contract.pose import parse_pose
 from sims.contract.trajectory import Trajectory
 
 
@@ -61,7 +62,7 @@ class ConfigurationTests(unittest.TestCase):
             self.assertNotIn("video_tracks", config.discovery)
             for interface in config.discovery["control_interfaces"].values():
                 self.assertEqual(len(interface["joint_names"]), 6)
-                self.assertEqual(set(interface["operations"]), {"joint_position", "gripper_position"})
+                self.assertEqual(set(interface["operations"]), {"joint_position", "gripper_position", "cartesian_pose"})
                 self.assertEqual(interface["operations"]["joint_position"]["profile"], "joints.trajectory.v1")
 
     def test_rejects_duplicate_keys_and_non_finite_json(self):
@@ -96,9 +97,60 @@ class ConfigurationTests(unittest.TestCase):
         config = Configuration.load(CONFIGS / "trossen-workbench.bindings.json", 12)
         for interface in config.discovery["control_interfaces"].values():
             for op in interface["operations"].values():
-                op["feedback_tracks"] = ["/joint_states"]
+                if op["profile"] != "arm.cartesian_pose.v1":
+                    op["feedback_tracks"] = ["/joint_states"]
         config.validate()
         self.assertEqual(config.feedback_tracks, {"/joint_states": ["left_arm", ("left_arm", "gripper"), "right_arm", ("right_arm", "gripper")]})
+
+    def test_cartesian_pose_is_vr_only_and_has_its_own_feedback(self):
+        original = Configuration.load(CONFIGS / "trossen-workbench.bindings.json", 12)
+        self.assertEqual(sorted(original.pose_tracks), ["/left_arm/end_effector_pose", "/right_arm/end_effector_pose"])
+        self.assertNotIn("/left_arm/end_effector_pose", original.feedback_tracks)
+        for mutation in ("presentation", "msg_type", "joint_names", "shared_feedback", "channel", "duplicate"):
+            config = copy.deepcopy(original)
+            interface = config.discovery["control_interfaces"]["left_arm"]
+            op = interface["operations"]["cartesian_pose"]
+            if mutation == "presentation":
+                op["presentations"] = ["joint_sliders"]
+            elif mutation == "msg_type":
+                op["command"]["msg_type"] = "trajectory_msgs/msg/JointTrajectory"
+            elif mutation == "joint_names":
+                op["joint_names"] = interface["joint_names"][:1]
+            elif mutation == "shared_feedback":
+                op["feedback_tracks"] = ["/left_arm/joint_states"]
+            elif mutation == "channel":
+                op["control_channel"] = "gripper"
+            else:
+                interface["operations"]["again"] = copy.deepcopy(op)
+                interface["operations"]["again"]["command"]["track_name"] = "/left_arm/other"
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                config.validate()
+
+
+class PoseTests(unittest.TestCase):
+    def message(self, **pose):
+        value = {"position": {"x": 0.3, "y": 0.0, "z": 0.2}, "orientation": {"x": 0, "y": 0, "z": 0, "w": 1}}
+        value.update(pose)
+        return json.dumps({"header": {"frame_id": "arm_base_link"}, "pose": value}).encode()
+
+    def test_parses_pose_in_the_base_frame(self):
+        target = parse_pose(self.message(), "arm_base_link")
+        self.assertEqual(target.position, (0.3, 0.0, 0.2))
+        self.assertEqual(target.orientation, (0, 0, 0, 1))
+        self.assertEqual(parse_pose(json.dumps({"pose": json.loads(self.message())["pose"]}).encode(), "x").position[0], 0.3)
+
+    def test_rejects_bad_frames_ranges_and_quaternions(self):
+        bad = [
+            (self.message(), "other_frame"),
+            (self.message(position={"x": 3, "y": 0, "z": 0}), "arm_base_link"),
+            (self.message(position={"x": 0, "y": 0}), "arm_base_link"),
+            (self.message(orientation={"x": 0, "y": 0, "z": 0, "w": 2}), "arm_base_link"),
+            (b'{"pose":{"position":{"x":NaN,"y":0,"z":0},"orientation":{"x":0,"y":0,"z":0,"w":1}}}', "arm_base_link"),
+            (b'[]', "arm_base_link"),
+        ]
+        for payload, frame in bad:
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                parse_pose(payload, frame)
 
 
 class TrajectoryTests(unittest.TestCase):

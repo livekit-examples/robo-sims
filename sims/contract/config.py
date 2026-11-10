@@ -12,8 +12,10 @@ from .camera_info import validate_camera_info
 
 TRAJECTORY = "joints.trajectory.v1"
 GRIPPER = "gripper.position.v1"
+CARTESIAN = "arm.cartesian_pose.v1"
 JOINT_STATE = "sensor_msgs/msg/JointState"
 JOINT_TRAJECTORY = "trajectory_msgs/msg/JointTrajectory"
+POSE_STAMPED = "geometry_msgs/msg/PoseStamped"
 CONFIGS = Path(__file__).with_name("configs")
 ControlKey = str | tuple[str, str]
 
@@ -21,6 +23,10 @@ ControlKey = str | tuple[str, str]
 def channel_key(interface_id: str, operation: dict) -> ControlKey:
     channel = operation.get("control_channel", "primary")
     return interface_id if channel == "primary" else (interface_id, channel)
+
+
+def interface_of(key: ControlKey) -> str:
+    return key if isinstance(key, str) else key[0]
 
 
 def operation_joints(interface, operation):
@@ -114,18 +120,23 @@ class Configuration:
             operations = interface.get("operations")
             if not isinstance(operations, dict) or not operations:
                 raise ValueError("an arm needs an implemented operation")
-            channels = set()
+            channels: dict[str, tuple[set, set]] = {}
             for operation_id, operation in operations.items():
                 if not re.fullmatch(r"[a-z][a-z0-9_]*", operation_id):
                     raise ValueError(f"invalid operation ID: {operation_id}")
-                if operation["profile"] not in (TRAJECTORY, GRIPPER):
+                if operation["profile"] not in (TRAJECTORY, GRIPPER, CARTESIAN):
                     raise ValueError(f"profile is not implemented: {operation['profile']}")
                 channel = operation.get("control_channel", "primary")
-                if not isinstance(channel, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", channel) \
-                        or channel in channels:
-                    raise ValueError("simulation requires one implemented operation per control channel")
-                channels.add(channel)
+                if not isinstance(channel, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", channel):
+                    raise ValueError("simulation requires a valid control channel")
+                profiles, channel_joints = channels.setdefault(channel, (set(), set()))
+                if operation["profile"] in profiles:
+                    raise ValueError("simulation requires one operation per profile and control channel")
+                profiles.add(operation["profile"])
                 selected = names(operation_joints(interface, operation), "operation joint_names")
+                if channel_joints and channel_joints != set(selected):
+                    raise ValueError("operations on one control channel must select the same joints")
+                channel_joints.update(selected)
                 gripper = operation["profile"] == GRIPPER
                 if gripper:
                     spec = binding.get("gripper", {})
@@ -138,7 +149,14 @@ class Configuration:
                 elif not set(selected) <= set(joints):
                     raise ValueError("arm operation selects unbound joints")
                 command = operation["command"]
-                if command["msg_type"] != JOINT_TRAJECTORY or command["format"] != "json" \
+                cartesian = operation["profile"] == CARTESIAN
+                if cartesian:
+                    if command["msg_type"] != POSE_STAMPED or command["format"] != "json" \
+                            or not isinstance(command["track_name"], str) or not command["track_name"]:
+                        raise ValueError("Cartesian commands require a named PoseStamped JSON track")
+                    if "joint_names" in operation or channel == "gripper":
+                        raise ValueError("Cartesian pose drives the whole arm interface")
+                elif command["msg_type"] != JOINT_TRAJECTORY or command["format"] != "json" \
                         or not isinstance(command["track_name"], str) or not command["track_name"]:
                     raise ValueError("trajectory commands require a named JointTrajectory JSON track")
                 if command["track_name"] in endpoints:
@@ -146,14 +164,16 @@ class Configuration:
                 endpoints.add(command["track_name"])
                 feedback = names(operation.get("feedback_tracks", []), "feedback_tracks")
                 if len(feedback) != 1:
-                    raise ValueError("trajectory profile needs exactly one required joint-state track")
-                expected = ["gripper_controls"] if gripper else ["joint_sliders"]
+                    raise ValueError("profile needs exactly one required feedback track")
+                expected = ["gripper_controls"] if gripper else ["vr"] if cartesian else ["joint_sliders"]
                 if operation["presentations"] != expected:
                     raise ValueError(f"profile supports {expected}")
                 if any(re.fullmatch(p, feedback[0]) for p in doc.get("exclude_data_tracks", [])):
-                    raise ValueError("required joint feedback cannot be excluded")
-        if endpoints & set(self.feedback_tracks):
+                    raise ValueError("required feedback cannot be excluded")
+        if endpoints & (set(self.feedback_tracks) | set(self.pose_tracks)):
             raise ValueError("command and feedback tracks cannot overlap")
+        if set(self.pose_tracks) & set(self.feedback_tracks):
+            raise ValueError("pose and joint feedback need separate tracks")
 
     @property
     def command_tracks(self) -> dict[str, tuple[ControlKey, dict]]:
@@ -166,8 +186,17 @@ class Configuration:
         tracks: dict[str, list[ControlKey]] = {}
         for key, interface in self.discovery["control_interfaces"].items():
             for operation in interface["operations"].values():
+                if operation["profile"] == CARTESIAN:
+                    continue
                 for track in operation.get("feedback_tracks", []):
                     target = channel_key(key, operation)
                     if target not in tracks.setdefault(track, []):
                         tracks[track].append(target)
         return tracks
+
+    @property
+    def pose_tracks(self) -> dict[str, ControlKey]:
+        """End-effector PoseStamped feedback tracks, each owned by one Cartesian operation."""
+        return {op["feedback_tracks"][0]: channel_key(key, op)
+                for key, interface in self.discovery["control_interfaces"].items()
+                for op in interface["operations"].values() if op["profile"] == CARTESIAN}

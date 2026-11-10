@@ -166,6 +166,47 @@ class MujocoContractTests(unittest.TestCase):
         backend.hold()
         self.assertFalse(backend.motions)
 
+    def test_cartesian_pose_feedback_and_inverse_kinematics_follow_the_base_frame(self):
+        import numpy as np
+        from sims.contract.pose import PoseTarget
+        for name, arm in (("trossen-wxai", "arm"), ("trossen-workbench", "right_arm")):
+            with self.subTest(model=name):
+                backend, config = self.backend(name)
+                self.assertIn(f"/{arm}/end_effector_pose", config.pose_tracks)
+                for _ in range(5):
+                    backend.step()
+                start = backend.pose_feedback(arm)
+                self.assertGreater(sum(v * v for v in start["pose"]["position"].values()), 0.01)
+                self.assertEqual(start["header"]["frame_id"], config.discovery["control_interfaces"][arm]["frame_id"])
+                position = start["pose"]["position"]
+                quaternion = start["pose"]["orientation"]
+                self.assertAlmostEqual(sum(v * v for v in quaternion.values()), 1, places=6)
+                target = PoseTarget((position["x"] + 0.03, position["y"], position["z"] + 0.02),
+                                    (quaternion["x"], quaternion["y"], quaternion["z"], quaternion["w"]))
+                backend.submit_pose(arm, target)
+                self.assertIn(arm, backend.motions)
+                for _ in range(300):
+                    backend.step()
+                end = backend.pose_feedback(arm)["pose"]["position"]
+                self.assertAlmostEqual(end["x"], position["x"] + 0.03, delta=0.01)
+                self.assertAlmostEqual(end["z"], position["z"] + 0.02, delta=0.01)
+                self.assertAlmostEqual(end["y"], position["y"], delta=0.01)
+                # Holding the measured pose is accepted and leaves the arm in place.
+                backend.submit_pose(arm, PoseTarget(
+                    tuple(end[a] for a in "xyz"),
+                    tuple(backend.pose_feedback(arm)["pose"]["orientation"][a] for a in "xyzw")))
+                for _ in range(50):
+                    backend.step()
+                held = backend.pose_feedback(arm)["pose"]["position"]
+                self.assertAlmostEqual(np.linalg.norm([held[a] - end[a] for a in "xyz"]), 0, delta=0.005)
+
+    def test_cartesian_policy_shares_the_arm_joints(self):
+        backend, _ = self.backend("trossen-workbench")
+        policy = backend.policy()["operations"]["left_arm"]
+        self.assertEqual(policy["cartesian_pose"]["profile"], "arm.cartesian_pose.v1")
+        self.assertEqual(policy["cartesian_pose"]["joint_names"], policy["joint_position"]["joint_names"])
+        self.assertEqual(policy["cartesian_pose"]["control_channel"], "primary")
+
     def test_bad_command_does_not_replace_running_trajectory(self):
         backend, _ = self.backend("trossen-wxai")
         name = "arm_joint_1"

@@ -26,3 +26,31 @@ TRAJECTORY_SCHEMA = {
                               for key in ("velocities", "accelerations", "effort")}},
         }}},
 }
+
+XYZ = {"type": "object", "required": ["x", "y", "z"], "additionalProperties": False,
+       "properties": {axis: {"type": "number"} for axis in "xyz"}}
+POSE_STAMPED_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
+    "required": ["header", "pose"], "additionalProperties": False,
+    "properties": {"header": HEADER, "pose": {
+        "type": "object", "required": ["position", "orientation"], "additionalProperties": False,
+        "properties": {"position": XYZ, "orientation": {
+            "type": "object", "required": ["x", "y", "z", "w"], "additionalProperties": False,
+            "properties": {axis: {"type": "number"} for axis in "xyzw"}}}}},
+}
+
+
+def schema_for(value):
+    """Describe our fixed telemetry structures, including their nullable fields."""
+    if value is None:
+        return {"type": ["number", "null"]}
+    if isinstance(value, bool):
+        return {"type": "boolean"}
+    if isinstance(value, str):
+        return {"type": "string"}
+    if isinstance(value, (int, float)):
+        return {"type": "number"}
+    if isinstance(value, list):
+        return {"type": "array", "items": schema_for(value[0]) if value else {}}
+    return {"type": "object", "required": list(value), "additionalProperties": False,
+            "properties": {key: schema_for(item) for key, item in value.items()}}

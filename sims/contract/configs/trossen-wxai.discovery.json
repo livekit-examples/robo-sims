@@ -53,6 +53,20 @@
           "presentations": [
             "gripper_controls"
           ]
+        },
+        "cartesian_pose": {
+          "profile": "arm.cartesian_pose.v1",
+          "command": {
+            "track_name": "/arm/pose_command",
+            "msg_type": "geometry_msgs/msg/PoseStamped",
+            "format": "json"
+          },
+          "feedback_tracks": [
+            "/arm/end_effector_pose"
+          ],
+          "presentations": [
+            "vr"
+          ]
         }
       }
     }

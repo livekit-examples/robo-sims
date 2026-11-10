@@ -8,7 +8,8 @@ from .. import mujoco_tools  # noqa: F401 - selects GL before importing MuJoCo
 import mujoco
 import numpy as np
 
-from .config import Configuration, ControlKey, GRIPPER, channel_key, operation_joints
+from .config import CARTESIAN, Configuration, ControlKey, GRIPPER, channel_key, interface_of, operation_joints
+from .pose import PoseTarget
 from .trajectory import Trajectory
 from .camera_info import validate_camera_info
 
@@ -39,6 +40,8 @@ class MujocoBackend:
         self.batch_rendering = scene.batch_rendering
         self.joints: dict[ControlKey, dict[str, Joint]] = {}
         self.motions: dict[ControlKey, Motion] = {}
+        self.frames: dict[str, tuple[int, int]] = {}  # interface ID -> base body, end-effector site
+        self.scratch = mujoco.MjData(self.model)  # for inverse kinematics only
         self.targets = self.data.ctrl.copy()
         # Keep all scene actuators, including the unadvertised grippers, at their initial pose.
         for arm in scene.arms.values():
@@ -52,9 +55,12 @@ class MujocoBackend:
             expected = scene.arms[binding["backend_arm"]]
             if base != expected.base_id or site != expected.site_id:
                 raise ValueError(f"base/site does not belong to {key}")
+            self.frames[key] = (base, site)
             interface = config.discovery["control_interfaces"][key]
             for operation in interface["operations"].values():
                 target = channel_key(key, operation)
+                if target in self.joints:
+                    continue  # Operations on one channel drive the same joints.
                 gripper = operation["profile"] == GRIPPER
                 joints = self.joints[target] = {}
                 for name in operation_joints(interface, operation):
@@ -126,7 +132,8 @@ class MujocoBackend:
                 gripper = op["profile"] == GRIPPER
                 entry = entries[op_id] = {
                     "profile": op["profile"], "control_channel": op.get("control_channel", "primary"),
-                    "joint_names": list(joints), "units": "m" if gripper else "rad",
+                    "joint_names": list(joints),
+                    "units": "m" if gripper else "m · quaternion" if op["profile"] == CARTESIAN else "rad",
                     "joints": {name: {"min": j.limits[0], "max": j.limits[1], "max_velocity": j.speed}
                                for name, j in joints.items()},
                 }
@@ -153,6 +160,72 @@ class MujocoBackend:
         # Replacing one channel leaves the same arm's other channels running.
         self.motions.pop(interface_id, None)
         self.motions[interface_id] = Motion(trajectory, float(self.data.time), start)
+
+    def submit_pose(self, interface_id: ControlKey, target: PoseTarget) -> None:
+        """Solve inverse kinematics for a base-frame pose and move toward it at the joint speed limits."""
+        joints = list(self.joints[interface_id].values())
+        names = tuple(self.joints[interface_id])
+        goal = self._solve(interface_id, joints, target)
+        start = tuple(float(self.targets[j.actuator]) for j in joints)
+        # The solution is the nearest reachable pose. Move there as fast as every joint allows.
+        duration = max(0.05, *(abs(g - s) / j.speed for g, s, j in zip(goal, start, joints))) * 1.05 + 0.02
+        if duration > 30:
+            raise ValueError("pose is too far from the current arm configuration")
+        self.submit(interface_id, Trajectory(names, (duration,), (goal,)))
+
+    def _solve(self, interface_id, joints, target: PoseTarget) -> tuple[float, ...]:
+        """Damped least-squares inverse kinematics on a scratch copy, seeded from the commanded joints."""
+        model, data = self.model, self.scratch
+        base, site = self.frames[interface_of(interface_id)]
+        data.qpos[:] = self.data.qpos
+        for joint in joints:
+            data.qpos[joint.qpos] = self.targets[joint.actuator]
+        mujoco.mj_kinematics(model, data)
+        base_rotation = data.xmat[base].reshape(3, 3).copy()
+        x, y, z, w = target.orientation
+        wanted = np.zeros(9)
+        mujoco.mju_quat2Mat(wanted, np.array([w, x, y, z]))
+        wanted_position = data.xpos[base] + base_rotation @ np.array(target.position)
+        wanted_rotation = base_rotation @ wanted.reshape(3, 3)
+        columns = [joint.dof for joint in joints]
+        jacobian = np.zeros((6, model.nv))
+        error, quaternion = np.zeros(6), np.zeros(4)
+        for _ in range(100):
+            mujoco.mj_kinematics(model, data)
+            mujoco.mj_comPos(model, data)
+            current = data.site_xmat[site].reshape(3, 3)
+            mujoco.mju_mat2Quat(quaternion, (wanted_rotation @ current.T).ravel())
+            mujoco.mju_quat2Vel(error[3:], quaternion, 1.0)
+            error[:3] = wanted_position - data.site_xpos[site]
+            if np.linalg.norm(error[:3]) < 1e-4 and np.linalg.norm(error[3:]) < 1e-3:
+                break
+            mujoco.mj_jacSite(model, data, jacobian[:3], jacobian[3:], site)
+            weights = np.array([1, 1, 1, 0.3, 0.3, 0.3])  # Position matters more than orientation.
+            reduced = jacobian[:, columns] * weights[:, None]
+            change = reduced.T @ np.linalg.solve(reduced @ reduced.T + 0.05**2 * np.eye(6), error * weights)
+            norm = np.linalg.norm(change)
+            if norm < 1e-7:
+                break
+            change *= min(1.0, 0.3 / norm)
+            for joint, delta in zip(joints, change):
+                data.qpos[joint.qpos] = np.clip(data.qpos[joint.qpos] + delta, *joint.limits)
+        return tuple(float(data.qpos[joint.qpos]) for joint in joints)
+
+    def pose_feedback(self, interface_id: ControlKey) -> dict:
+        """The end-effector pose in the arm base frame, as a PoseStamped."""
+        interface = interface_of(interface_id)
+        base, site = self.frames[interface]
+        rotation = self.data.xmat[base].reshape(3, 3)
+        position = rotation.T @ (self.data.site_xpos[site] - self.data.xpos[base])
+        quaternion = np.zeros(4)
+        mujoco.mju_mat2Quat(quaternion, (rotation.T @ self.data.site_xmat[site].reshape(3, 3)).ravel())
+        at = float(self.data.time)
+        sec = int(at)
+        w, x, y, z = (float(v) for v in quaternion)
+        return {"header": {"stamp": {"sec": sec, "nanosec": int((at - sec) * 1e9)},
+                           "frame_id": self.config.discovery["control_interfaces"][interface]["frame_id"]},
+                "pose": {"position": dict(zip("xyz", (float(v) for v in position))),
+                         "orientation": {"x": x, "y": y, "z": z, "w": w}}}
 
     def hold(self, interface_id: ControlKey | None = None) -> None:
         for key in self.joints if interface_id is None else (interface_id,):

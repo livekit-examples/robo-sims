@@ -8,25 +8,10 @@ from livekit import rtc
 from ..contract.gateway import ContractGateway, OWNER
 from ..contract.battery import PERIOD
 from ..contract.rtc_schema import define_json_schema, publish_json
+from ..contract.schemas import schema_for
 from .backend import ACKERMANN_SCHEMA, COMMAND, ODOM_TRACK, STATE_TRACK, STATE
 
 LOG = logging.getLogger("sims.f1tenth")
-
-
-def schema_for(value):
-    """Describe our fixed telemetry structures, including their nullable fields."""
-    if value is None:
-        return {"type": ["number", "null"]}
-    if isinstance(value, bool):
-        return {"type": "boolean"}
-    if isinstance(value, str):
-        return {"type": "string"}
-    if isinstance(value, (int, float)):
-        return {"type": "number"}
-    if isinstance(value, list):
-        return {"type": "array", "items": schema_for(value[0]) if value else {}}
-    return {"type": "object", "required": list(value), "additionalProperties": False,
-            "properties": {key: schema_for(item) for key, item in value.items()}}
 
 
 class DriveGateway(ContractGateway):

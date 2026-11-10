@@ -16,6 +16,7 @@ python -m sims run rebot-arm --help       # its options
 | Simulation | Level | What it is |
 |---|---|---|
 | `f1tenth` | participant | Community-scale formula RC car on Spielberg with an onboard driving camera, speed/steering control and lap telemetry. |
+| `vacuum` | participant | A round vacuum robot cleaning a furnished 2 x 2 m room. MuJoCo drives it, and it publishes overhead and onboard video, a cleaning grid, battery and bin state, and Twist control. |
 | `trossen-wxai` | participant | One Trossen WidowX AI arm with a wrist D405 stereo camera and a scene camera. |
 | `trossen-wxai-whack` | participant | Whack-a-mole on the WidowX AI: grab a wooden mallet and hit the pop-up ball that matches the lit color. |
 | `trossen-workbench` | participant | Two Trossen WidowX Pro arms with ZED X Nano wrist cameras, a ZED X Mini scene camera and a scene camera. |
@@ -84,6 +85,7 @@ adapter requirements and the self-hosted server schema-storage setting.
 | `sims/paths.py` | Where the teleop repo, the robot program and the assets are. `TELEOP_REPO`, `TELEOP_ROBOT_BIN` and `SIM_ASSETS_DIR` override the defaults. |
 | `sims/trossen/` | The Trossen simulations and their LiveKit probe. |
 | `sims/f1tenth/` | [Formula RC](sims/f1tenth/README.md): community-scale vehicle dynamics, Spielberg scene, Ackermann gateway and runner. |
+| `sims/vacuum/` | [Vacuum robot](sims/vacuum/README.md): MuJoCo room and differential-drive robot, 1 cm cleaning grid, battery and bin, Twist gateway and runner. |
 | `sims/contract/` | Shared generalized gateway, trajectory profile, MuJoCo backend, and per-scene JSON bindings/discovery. |
 | `sims/rebot/` | The reBot emulated hardware and its launcher. |
 | `tools/serial_bridge.py` | Turns a bus served over TCP back into a local serial device. Standard library only. |
