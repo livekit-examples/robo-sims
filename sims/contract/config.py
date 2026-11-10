@@ -166,7 +166,10 @@ class Configuration:
                 if len(feedback) != 1:
                     raise ValueError("profile needs exactly one required feedback track")
                 expected = ["gripper_controls"] if gripper else ["vr"] if cartesian else ["joint_sliders"]
-                if operation["presentations"] != expected:
+                # A Cartesian pose also supports the hand tracking presentation. List it first to make
+                # it the default.
+                allowed = [expected, ["hand_tracking", "vr"], ["vr", "hand_tracking"]] if cartesian else [expected]
+                if operation["presentations"] not in allowed:
                     raise ValueError(f"profile supports {expected}")
                 if any(re.fullmatch(p, feedback[0]) for p in doc.get("exclude_data_tracks", [])):
                     raise ValueError("required feedback cannot be excluded")

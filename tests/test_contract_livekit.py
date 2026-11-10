@@ -34,7 +34,7 @@ class LiveKitContractTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.sleep(0.02)
             await asyncio.wait_for(wait(), timeout)
 
-        for sim_name in ("trossen-wxai", "trossen-workbench"):
+        for sim_name in ("trossen-wxai", "trossen-workbench", "cluttered-table"):
             with self.subTest(sim=sim_name):
                 room_name = "contract-test-" + uuid.uuid4().hex
 

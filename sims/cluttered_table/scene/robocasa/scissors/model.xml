@@ -1,0 +1,34 @@
+<mujoco model="Portal RoboCasa scissors">
+  <asset>
+    <mesh file="visual/model_normalized_0.obj" name="model_normalized_0_vis" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <texture type="2d" name="image0" file="visual/image0.png" />
+    <material name="Scissors_Blue" texture="image0" specular="0.5" shininess="0.25" />
+    <mesh file="collision/collision_mesh_collision_0.obj" name="scissors_collision_mesh_0" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_1.obj" name="scissors_collision_mesh_1" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_2.obj" name="scissors_collision_mesh_2" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_3.obj" name="scissors_collision_mesh_3" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_4.obj" name="scissors_collision_mesh_4" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_5.obj" name="scissors_collision_mesh_5" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_6.obj" name="scissors_collision_mesh_6" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_7.obj" name="scissors_collision_mesh_7" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_8.obj" name="scissors_collision_mesh_8" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+    <mesh file="collision/collision_mesh_collision_9.obj" name="scissors_collision_mesh_9" scale="0.15999999999999998 0.15999999999999998 0.15999999999999998" refquat="0.7071067811865475 0.0 0.0 0.7071067811865476" />
+  </asset>
+  <worldbody>
+    <body name="object">
+      <geom solimp="0.998 0.998 0.001" solref="0.001 1" density="0" friction="0.95 0.3 0.1" type="mesh" mesh="model_normalized_0_vis" conaffinity="0" contype="0" group="2" material="Scissors_Blue" name="visual_0" />
+      <geom mesh="scissors_collision_mesh_0" type="mesh" name="collision_0" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_1" type="mesh" name="collision_1" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_2" type="mesh" name="collision_2" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_3" type="mesh" name="collision_3" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_4" type="mesh" name="collision_4" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_5" type="mesh" name="collision_5" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_6" type="mesh" name="collision_6" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_7" type="mesh" name="collision_7" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_8" type="mesh" name="collision_8" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="scissors_collision_mesh_9" type="mesh" name="collision_9" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <freejoint name="free" />
+      <inertial pos="-0.000277430935209 -0.0331682834694 8.30109378301e-06" quat="0.499525935886 0.500916837286 -0.499228245906 0.500327212921" mass="0.06" diaginertia="9.15952480973e-05 7.99916530603e-05 1.20389205912e-05" />
+    </body>
+  </worldbody>
+</mujoco>

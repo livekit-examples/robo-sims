@@ -11,6 +11,7 @@ python -m sims list                       # what can run
 python -m sims run trossen-workbench      # run one
 python -m sims run trossen-workbench --protocol legacy  # original VR controller
 python -m sims run rebot-arm --help       # its options
+python -m sims run cluttered-table        # two arms, hand tracking control
 ```
 
 | Simulation | Level | What it is |
@@ -21,6 +22,7 @@ python -m sims run rebot-arm --help       # its options
 | `trossen-wxai-whack` | participant | Whack-a-mole on the WidowX AI: grab a wooden mallet and hit the pop-up ball that matches the lit color. |
 | `trossen-workbench` | participant | Two Trossen WidowX Pro arms with ZED X Nano wrist cameras, a ZED X Mini scene camera and a scene camera. |
 | `trossen-workbench-whack` | participant | Whack-a-mole on the Workbench: a bigger table with five holes and a mallet for each arm. Hits by either mallet count. |
+| `cluttered-table` | participant | Two WidowX AI arms at a maple workbench cluttered with household objects, with overhead, wrist and scene cameras. The arms take hand tracking control from the teleop web app. |
 | `rebot-arm` | hardware | One Seeed reBot B601-DM arm with a scene camera. The real robot program drives an emulated Damiao motor bus and opens a rendered camera stream. |
 
 Nothing here uses ROS.
@@ -86,6 +88,7 @@ adapter requirements and the self-hosted server schema-storage setting.
 | `sims/trossen/` | The Trossen simulations and their LiveKit probe. |
 | `sims/f1tenth/` | [Formula RC](sims/f1tenth/README.md): community-scale vehicle dynamics, Spielberg scene, Ackermann gateway and runner. |
 | `sims/vacuum/` | [Vacuum robot](sims/vacuum/README.md): MuJoCo room and differential-drive robot, 1 cm cleaning grid, battery and bin, Twist gateway and runner. |
+| `sims/cluttered_table/` | [Cluttered table](sims/cluttered_table/README.md): the workbench scene, household props and WidowX AI arm pair, on the contract gateway. |
 | `sims/contract/` | Shared generalized gateway, trajectory profile, MuJoCo backend, and per-scene JSON bindings/discovery. |
 | `sims/rebot/` | The reBot emulated hardware and its launcher. |
 | `tools/serial_bridge.py` | Turns a bus served over TCP back into a local serial device. Standard library only. |

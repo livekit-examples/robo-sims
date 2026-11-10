@@ -308,13 +308,17 @@ async def _run(args, sim_spec) -> int:
         raise SystemExit("--benchmark-video needs positive finite seconds and cannot combine with --no-video or --check")
     config = None
     model_path = None
+    if args.protocol == "legacy" and sim_spec.options["scene"] == "cluttered_table":
+        raise SystemExit("cluttered-table supports only --protocol contract")
     if args.protocol == "contract":
         from ..contract.config import Configuration
 
         config = Configuration.load(args.bindings, args.fps)
         if config.bindings["scene"] != sim_spec.options["scene"]:
             raise ValueError("bindings scene does not match the selected simulation")
-        model_path = args.assets_dir / config.bindings["model"]
+        # The cluttered table builds its model in code, so its binding names no file.
+        model_path = (None if sim_spec.options["scene"] == "cluttered_table"
+                      else args.assets_dir / config.bindings["model"])
     elif args.no_video:
         raise ValueError("--no-video is available with --protocol contract")
     sim = TrossenSimulation(args.assets_dir, sim_spec.options["scene"], args.width, args.height,

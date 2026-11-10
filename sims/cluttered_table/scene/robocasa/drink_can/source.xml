@@ -1,0 +1,27 @@
+<mujoco model="can_6">
+  <asset>
+    <mesh file="visual/model_normalized_0.obj" name="model_normalized_0_vis" scale="0.11 0.11 0.11" refquat="1.0 0.0 0.0 0.0"/>
+    <texture type="2d" name="image0" file="visual/image0.png"/>
+    <material name="Cola" texture="image0" specular="0.5" shininess="0.038399988999999995"/>
+    <mesh file="collision/collision_mesh_collision_0.obj" name="can_collision_mesh_0" scale="0.11 0.11 0.11" refquat="1.0 0.0 0.0 0.0"/>
+    <mesh file="collision/collision_mesh_collision_1.obj" name="can_collision_mesh_1" scale="0.11 0.11 0.11" refquat="1.0 0.0 0.0 0.0"/>
+  </asset>
+  <default>
+    <default class="region">
+      <geom group="1" conaffinity="0" contype="0" rgba="0 1 0 0"/>
+    </default>
+    <default class="collision">
+      <geom group="0" rgba="0.5 0 0 0.5" density="1000.0"/>
+    </default>
+  </default>
+  <worldbody>
+    <body>
+      <body name="object">
+        <geom solimp="0.998 0.998 0.001" solref="0.001 1" density="100" friction="0.95 0.3 0.1" type="mesh" mesh="model_normalized_0_vis" conaffinity="0" contype="0" group="1" material="Cola"/>
+        <geom class="region" name="reg_bbox" type="box" pos="0.0 0.0 -2.2767799999996452e-05" size="0.034531385899999996 0.0345314057 0.0554064478"/>
+        <geom mesh="can_collision_mesh_0" type="mesh" class="collision"/>
+        <geom mesh="can_collision_mesh_1" type="mesh" class="collision"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

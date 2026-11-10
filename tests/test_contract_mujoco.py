@@ -234,12 +234,14 @@ class MujocoContractTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 MujocoBackend(backend.scene, broken)
 
-    def _grab_mallet(self, backend, config, interface, arm_id, hammer_index):
+    def _grab_mallet(self, backend, config, interface, arm_id, hammer_index, pitch=0.0):
         import numpy as np
+        # `pitch` tilts the gripper down about y. The Workbench mallets are too far out to reach level.
+        rotation = np.array([[np.cos(pitch), 0, np.sin(pitch)], [0, 1, 0], [-np.sin(pitch), 0, np.cos(pitch)]])
         scene = backend.scene
         arm, hammer = scene.arms[arm_id], scene.game.hammers[hammer_index]
         grip = scene.data.site_xpos[hammer.grip_site].copy()
-        goals = scene._inverse_kinematics(arm, grip + [0, 0, 0.01], np.eye(3), 300)
+        goals = scene._inverse_kinematics(arm, grip + [0, 0, 0.01], rotation, 300)
         names = config.discovery["control_interfaces"][interface]["joint_names"]
         start = [backend.feedback([interface])["position"][i] for i in range(len(names))]
         duration = max(3.0, 1.2 * max(abs(g - p) for g, p in zip(goals, start)) / 0.5)
@@ -256,11 +258,12 @@ class MujocoContractTests(unittest.TestCase):
         self.assertTrue(backend.scene.game.held)
 
     def test_workbench_whack_each_arm_picks_up_a_mallet(self):
+        import numpy as np
         backend, config = self.backend("trossen-workbench-whack")
         game = backend.scene.game
         self.assertEqual((len(game.moles), len(game.hammers)), (5, 2))
-        self._grab_mallet(backend, config, "left_arm", "left", 0)
-        self._grab_mallet(backend, config, "right_arm", "right", 1)
+        self._grab_mallet(backend, config, "left_arm", "left", 0, pitch=np.pi / 4)
+        self._grab_mallet(backend, config, "right_arm", "right", 1, pitch=np.pi / 4)
         self.assertEqual(game.state()["hammers"], ["left", "right"])
 
     def test_workbench_whack_either_mallet_scores(self):

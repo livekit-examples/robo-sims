@@ -10,7 +10,8 @@ from livekit import api
 from ..livekit_auth import scientist_names
 
 ACTIVE = ('starting', 'ready', 'stopping')
-SUPPORTED = ('trossen-wxai', 'trossen-wxai-whack', 'trossen-workbench', 'trossen-workbench-whack', 'f1tenth', 'vacuum')
+SUPPORTED = ('trossen-wxai', 'trossen-wxai-whack', 'trossen-workbench', 'trossen-workbench-whack', 'f1tenth', 'vacuum',
+             'cluttered-table')
 KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_-]{16,100}$')
 
 

@@ -53,6 +53,9 @@ SIMULATIONS = {
                    "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "workbench"}, "sims.trossen.managed", "dual-arm"),
         Simulation("trossen-workbench-whack", "two Trossen WidowX Pro arms playing whack-a-mole with two wooden mallets",
                    "participant", "sims.trossen.runner", ("trossen_arm_mujoco",), {"scene": "workbench_whack"}, "sims.trossen.managed", "dual-arm"),
+        Simulation("cluttered-table", "two WidowX AI arms at a maple workbench cluttered with household objects, "
+                   "with hand tracking control", "participant", "sims.trossen.runner", ("trossen_arm_mujoco",),
+                   {"scene": "cluttered_table"}, "sims.cluttered_table.managed", "dual-arm"),
         Simulation("rebot-arm", "one Seeed reBot B601-DM arm and a scene camera on emulated hardware, driven by the robot program",
                    "hardware", "sims.rebot.runner", ("rebot_b601_dm",), {"platform": "rebot_b601_dm"}),
     )

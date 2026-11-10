@@ -12,6 +12,7 @@ import mujoco
 import numpy as np
 
 from . import whack
+from ..cluttered_table import scene as cluttered_table
 from .protocol import Command
 from .whack import WhackAMole
 
@@ -220,22 +221,31 @@ class TrossenSimulation:
             source = assets_dir / "wxai" / "wxai_follower.xml"
         elif scene in ("workbench", "workbench_whack"):
             source = assets_dir / "workbench" / "scene.xml"
+        elif scene == "cluttered_table":
+            # This scene is built in code from its own folder and the wxai arm model.
+            source = assets_dir / "wxai" / "wxai_follower.xml"
+            model_path = None
         else:
             raise ValueError(f"Unknown scene: {scene}")
         if model_path is not None:
             source = model_path
         if not source.is_file():
             raise FileNotFoundError(f"Trossen MuJoCo scene not found: {source}")
-        spec = mujoco.MjSpec.from_file(str(source))
+        spec = (cluttered_table.build_spec(assets_dir) if scene == "cluttered_table"
+                else mujoco.MjSpec.from_file(str(source)))
         if scene == "single_wxai":
             self._single_scene(spec, assets_dir)
         elif scene == "whack_wxai":
             self._whack_scene(spec, assets_dir)
         elif scene == "workbench_whack":
             self._workbench_whack_scene(spec, assets_dir)
+        elif scene == "cluttered_table":
+            pass  # built by cluttered_table.build_spec
         else:
             self._workbench_scene(spec, assets_dir)
         self.model = spec.compile()
+        if scene == "cluttered_table":
+            cluttered_table.finish_model(self.model)
         # Scene games run on every physics step (see after_physics_step). A game
         # sets up its keyframes, so it starts before the reset below.
         layout = whack.LAYOUTS.get(scene)
@@ -254,6 +264,8 @@ class TrossenSimulation:
         self.data = mujoco.MjData(self.model)
         if self.model.nkey:
             mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
+        if scene == "cluttered_table":
+            cluttered_table.set_home(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
         if self.game is not None:
             self.game.attach_mallets(self.data)  # the mallets start in the grippers
@@ -274,6 +286,18 @@ class TrossenSimulation:
             self.feeds = {
                 "arm_wrist": CameraFeed("cam", "sim.arm.stereo", "Wrist", "wrist", D405, "arm"),
                 "scene": CameraFeed("scene", "sim.scene", "Simulation scene", "scene"),
+            }
+        elif scene == "cluttered_table":
+            self.arm_model = "wxai_v0"
+            self.arms = {arm_id: self._arm(arm_id, f"{arm_id}_", f"{arm_id}_gripper")
+                         for arm_id in ("left", "right")}
+            self.feeds = {
+                "overhead": CameraFeed("overhead_camera", "overhead_camera", "Overhead", "other"),
+                "left_wrist": CameraFeed("left_wrist_cam", "left_wrist_camera", "Left wrist", "wrist",
+                                         None, "left"),
+                "right_wrist": CameraFeed("right_wrist_cam", "right_wrist_camera", "Right wrist", "wrist",
+                                          None, "right"),
+                "scene": CameraFeed("scene", "scene_camera", "Simulation scene", "scene"),
             }
         else:
             self.arm_model = "wxpro"
