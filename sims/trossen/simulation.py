@@ -255,6 +255,8 @@ class TrossenSimulation:
         if self.model.nkey:
             mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         mujoco.mj_forward(self.model, self.data)
+        if self.game is not None:
+            self.game.attach_mallets(self.data)  # the mallets start in the grippers
         # Inverse kinematics runs on a copy, so that it does not move the arm.
         self.ik_data = mujoco.MjData(self.model)
         self.width = width

@@ -40,11 +40,11 @@ SLAB_THICKNESS = 0.10     # the balls hide inside the tabletop slab when they ar
 # axis along +z. Held, the body frame matches the gripper's ee_site frame.
 HANDLE_RADIUS = 0.011
 HANDLE_LENGTH = 0.20
-GRIP_FROM_END = 0.03      # the grip point sits this far from the handle's end
+GRIP_FROM_END = HANDLE_LENGTH / 2   # the grip point sits halfway down the handle
 HEAD_RADIUS = 0.038
 HEAD_HALF_LENGTH = 0.06
-WOOD_DENSITY = 650.0
-GRAB_DISTANCE = 0.06      # m between an ee_site and a grip point to snap
+WOOD_DENSITY = 1.0        # kg/m^3: close to weightless, so a held mallet does not load the arm
+GRAB_DISTANCE = 0.06      # m between an ee_site and the handle to snap
 
 # Light bar.
 LIGHT_SPACING = 0.13
@@ -65,9 +65,9 @@ RISE_TIME = 0.18
 FALL_TIME = 0.18
 HIT_FALL_TIME = 0.08
 HIT_FLASH_TIME = 0.25
-UP_TIME = (2.5, 4.5)
+UP_TIME = (3.5, 6.0)
 DOWN_TIME = (0.8, 2.8)
-TARGET_TIME = 12.0        # the lit color also changes after this long
+TARGET_TIME = 18.0        # the lit color also changes after this long
 TARGET_COLOR_CHANCE = 0.5  # chance that a popping ball takes the lit color
 GAME_START_DELAY = 1.0
 
@@ -117,12 +117,13 @@ SINGLE_WXAI = WhackLayout(
     light_bar_x=0.74)
 
 # The Workbench, two WidowX Pro arms 0.55 m apart facing +x, stands on a table
-# about twice the size of the single-arm one. Five holes in a W, a mallet in
-# front of each arm with its handle pointing out to the side.
+# about twice the size of the single-arm one. Five holes in a W. Each mallet
+# lies between two front-row holes, with its handle toward the arms and its
+# head clear of the back-row holes.
 WORKBENCH = WhackLayout(
     table_center=(0.30, 0.0), table_half=(0.50, 0.72), table_top=0.0, floor_z=-0.75,
     holes=((0.47, -0.36), (0.47, 0.0), (0.47, 0.36), (0.64, -0.18), (0.64, 0.18)),
-    hammers=((0.22, 0.52, math.pi / 2), (0.22, -0.52, -math.pi / 2)),
+    hammers=((0.36, 0.18, 0.0), (0.36, -0.18, 0.0)),
     grippers=tuple(Gripper(f"{arm}_link_6", f"{arm}_ee_site", f"{arm}_gripper",
                            (f"{arm}_left_carriage_joint", f"{arm}_right_carriage_joint"), 0.0115)
                    for arm in ("left", "right")),
@@ -459,6 +460,14 @@ class WhackAMole:
         self._open_grippers()
         self.reset()
 
+    def attach_mallets(self, data: mujoco.MjData) -> None:
+        """Puts mallet i in gripper i, held halfway down the handle. Call after a keyframe reset."""
+        mujoco.mj_forward(self.model, data)
+        for index, (hand, hammer) in enumerate(zip(self.hands, self.hammers)):
+            if hammer.held_by is None and hand.holding is None:
+                self._grab(data, index, hand, index, hammer)
+        mujoco.mj_forward(self.model, data)
+
     def _open_grippers(self) -> None:
         """Opens each gripper in the keyframes to rest just around a mallet handle."""
         for gripper in self.layout.grippers:
@@ -523,10 +532,18 @@ class WhackAMole:
             if hand.holding is not None:
                 continue
             for index, hammer in enumerate(self.hammers):
-                if hammer.held_by is None and np.linalg.norm(
-                        data.site_xpos[hand.ee_site] - data.site_xpos[hammer.grip_site]) <= GRAB_DISTANCE:
+                if hammer.held_by is None and self._handle_distance(data, hand, hammer) <= GRAB_DISTANCE:
                     self._grab(data, arm, hand, index, hammer)
                     break
+
+    @staticmethod
+    def _handle_distance(data: mujoco.MjData, hand: Hand, hammer: Hammer) -> float:
+        """Distance from the ee_site to the nearest point on the mallet's handle."""
+        grip = data.site_xpos[hammer.grip_site]
+        axis = data.site_xmat[hammer.grip_site].reshape(3, 3)[:, 0]   # handle direction
+        along = float(np.clip(np.dot(data.site_xpos[hand.ee_site] - grip, axis),
+                              -GRIP_FROM_END + HANDLE_RADIUS, HANDLE_LENGTH - GRIP_FROM_END))
+        return float(np.linalg.norm(data.site_xpos[hand.ee_site] - (grip + along * axis)))
 
     def _grab(self, data: mujoco.MjData, arm: int, hand: Hand, index: int, hammer: Hammer) -> None:
         # Snap the mallet's grip frame onto the ee_site, then weld it to the wrist.
