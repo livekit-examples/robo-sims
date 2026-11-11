@@ -56,6 +56,8 @@ class ContractGateway:
 
     def _compatible(self, identity, roles=("operator",)):
         peer = self.room.remote_participants.get(identity)
+        if self.shared_instance:
+            return peer is not None and self._managed_grant(peer)
         return (peer is not None and peer.attributes.get(ROLE) in roles
                 and peer.attributes.get(VERSION) == "3")
 
@@ -100,6 +102,8 @@ class ContractGateway:
     def _bind_events(self):
         @self.room.on("data_track_published")
         def published(track):
+            if self.shared_instance and not self._compatible(track.publisher_identity):
+                return
             endpoint = self.config.command_tracks.get(track.info.name)
             if endpoint is None or track.info.sid in self.readers:
                 return
@@ -168,6 +172,8 @@ class ContractGateway:
                     continue
                 try:
                     self._receive_command(track, interface_id, operation, frame.payload)
+                    if self.shared_instance:
+                        self._record_activity(track.publisher_identity, frame.payload, track.info.name)
                 except (ValueError, UnicodeDecodeError, KeyError, TypeError, OverflowError) as error:
                     LOG.warning("Rejected %s command: %s", track.info.name, error)
         finally:
@@ -175,6 +181,27 @@ class ContractGateway:
             self.readers.pop(track.info.sid, None)
             if stream is not None:
                 await stream.aclose()
+
+    def _record_activity(self, identity, payload, source=''):
+        # Constant frames and release/neutral frames are not human engagement.
+        value = json.loads(payload)
+        if isinstance(value, dict) and ('speed' in value or 'linear' in value):
+            moving = value.get('speed', 0) or value.get('steering_angle', 0) or \
+                value.get('linear', {}).get('x', 0) or value.get('angular', {}).get('z', 0)
+            if not moving:
+                return
+        if isinstance(value, dict) and value.get('points') == []:
+            return
+        if isinstance(value, dict) and 'points' in value:
+            # Refresh timing changes as feedback settles, even without new user input.
+            value = dict(joint_names=value.get('joint_names'), points=[
+                {key: point[key] for key in ('positions', 'velocities', 'accelerations', 'effort')
+                 if key in point} for point in value['points']])
+        key = (identity, source)
+        if self._last_commands.get(key) == value:
+            return
+        self._last_commands[key] = value
+        self.last_activity = dict(identity=identity, event=str(time.monotonic_ns()))
 
     def _receive_command(self, track, interface_id, operation, payload):
         if operation["profile"] == CARTESIAN:
@@ -205,6 +232,12 @@ class ContractGateway:
 
     async def _set_owner(self, invocation):
         caller = invocation.caller_identity
+        if self.shared_instance:
+            target = invocation.payload
+            if self.expired or target not in ('', caller) or \
+                    (target and not self._compatible(caller)) or \
+                    (not target and caller != self.active_operator):
+                raise rtc.RpcError(2003, 'Join this simulation queue before requesting control')
         if self.expired or (self.operator_prefix and not caller.startswith(self.operator_prefix)):
             raise rtc.RpcError(2003, "This participant cannot acquire managed control")
         # Participant attributes may arrive just after the first RPC.
@@ -327,6 +360,8 @@ class ContractGateway:
             await self._publish()
             LOG.info("Contract gateway online as %s", self.room.local_participant.identity)
             loops = [self._simulate, self._telemetry, self._battery] + ([self._video] if self.video_sources else [])
+            if self.shared_instance:
+                loops.append(self._control_guard)
             self.tasks = [asyncio.create_task(loop()) for loop in loops]
             for task in self.tasks:
                 task.add_done_callback(self._background_done)

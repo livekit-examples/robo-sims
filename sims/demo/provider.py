@@ -21,7 +21,9 @@ class NativeProvider:
                 sys.executable, '-m', 'sims.demo.worker', '--id', run['id'],
                 '--simulation', run['simulation_id'], '--directory', str(directory),
                 '--cleanup', str(cleanup), '--duration', str(run['duration_seconds']),
-                '--fps', str(run['fps']), '--startup', str(run['startup_seconds']), cwd=Path(__file__).resolve().parents[2],
+                '--fps', str(run['fps']), '--startup', str(run['startup_seconds']),
+                *(['--shared', '--idle', str(run['idle_seconds'])] if run.get('shared') else []),
+                cwd=Path(__file__).resolve().parents[2],
                 env=env, stdout=log, stderr=log, start_new_session=True)
         finally:
             if log is not None:
@@ -68,6 +70,7 @@ class DockerProvider:
                 '--directory', '/run/session', '--cleanup', str(cleanup), '--log',
                 '--duration', str(run['duration_seconds']), '--fps', str(run['fps']),
                 '--startup', str(run['startup_seconds']),
+                *(['--shared', '--idle', str(run['idle_seconds'])] if run.get('shared') else []),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             _, error = await child.communicate()
             if child.returncode:

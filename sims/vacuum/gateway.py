@@ -59,7 +59,7 @@ class VacuumGateway(ContractGateway):
     def _require_operator(self, invocation, method):
         if invocation.payload != "":
             raise rtc.RpcError(2000, f"{method} takes an empty payload")
-        if not (self.armed and invocation.caller_identity == self.active_operator and not self.expired):
+        if not self._accepts(invocation.caller_identity):
             raise rtc.RpcError(2003, f"{method} needs the operator that controls the robot, with controls armed")
 
     async def _start_run(self, invocation):

@@ -10,7 +10,7 @@ from sims.demo.rules import SUPPORTED, now
 
 
 class ModalTests(unittest.TestCase):
-    def test_all_simulations_use_one_gpu_function_with_twenty_single_input_containers(self):
+    def test_all_simulations_use_one_gpu_function_with_seven_single_input_containers(self):
         source=ast.parse((Path(__file__).resolve().parents[1]/'modal_app.py').read_text())
         gpu_functions=[]
         for function in (node for node in source.body if isinstance(node,ast.FunctionDef)):
@@ -19,7 +19,7 @@ class ModalTests(unittest.TestCase):
                 keywords={kw.arg:kw.value for kw in decorator.keywords}
                 if 'gpu' in keywords:
                     gpu_functions.append(function.name)
-                    self.assertEqual(ast.literal_eval(keywords['max_containers']),20)
+                    self.assertEqual(ast.literal_eval(keywords['max_containers']),7)
                     self.assertFalse(any(isinstance(d,ast.Call) and isinstance(d.func,ast.Attribute)
                         and d.func.attr=='concurrent' for d in function.decorator_list))
                 if function.name=='coordinate' and 'max_containers' in keywords:

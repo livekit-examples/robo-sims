@@ -31,6 +31,8 @@ class Reports:
         self.url = os.environ.get("SIM_WORKER_API_URL")
         self.key = os.environ.get("SIM_WORKER_KEY")
         self.event = {"state": "starting"}
+        self.idle_deadline = None
+        self._idle_value = None
 
     def update(self, event):
         self.event = event
@@ -40,7 +42,12 @@ class Reports:
 
     async def exchange(self):
         if not self.url:
-            return bool(read_json(self.directory / "control.json").get("stop"))
+            response = read_json(self.directory / 'control.json')
+            value = response.get('idle_deadline')
+            if isinstance(value, (float, int)) and value != self._idle_value:
+                self._idle_value = value
+                self.idle_deadline = time.monotonic() + max(0, value/1000-time.time())
+            return bool(response.get('stop'))
         from aiohttp import ClientSession, ClientTimeout
         async with ClientSession(timeout=ClientTimeout(total=2)) as client:
             async with client.post(f"{self.url.rstrip(chr(47))}/workers/{self.identifier}/events",
@@ -51,6 +58,9 @@ class Reports:
     async def monitor(self, gateway):
         while True:
             try:
+                if gateway.shared_instance and self.event.get('state') == 'ready':
+                    self.event['activity'] = gateway.last_activity
+                    write_json(self.directory / 'event.json', self.event)
                 if await self.exchange():
                     gateway.stopping.set()
             except Exception:
@@ -73,7 +83,10 @@ async def serve(args):
         module = importlib.import_module(spec.managed_module)
         gateway, policy = module.create(spec, os.environ['LIVEKIT_URL'], os.environ['LIVEKIT_TOKEN'],
                                         None if getattr(args, 'shared', False) else f'demo-op-{args.id}-', fps=args.fps)
+<<<<<<< HEAD
         gateway.sim_name = args.simulation
+=======
+>>>>>>> aa68a2a (Share simulation workers and control queues through LiveKit)
         if getattr(args, 'shared', False):
             gateway.shared_instance = args.id
             gateway.shared_simulation = args.simulation
@@ -93,9 +106,14 @@ async def serve(args):
         ready_at = int(time.time() * 1000)
         expires_at = ready_at + round(args.duration * 1000)
         deadline = loop.time() + args.duration
+        if getattr(args, 'shared', False):
+            reports.idle_deadline = time.monotonic() + args.idle
         reports.update({'state': 'ready', 'ready_at': ready_at,
-                                             'expires_at': expires_at, 'policy': policy})
+            'expires_at': expires_at, 'policy': policy, 'discovery': gateway.discovery()})
         while not running.done():
+            if reports.idle_deadline is not None and time.monotonic() >= reports.idle_deadline:
+                reason = 'expired'
+                break
             if loop.time() >= deadline:
                 reason = 'expired'
                 break
@@ -143,10 +161,18 @@ def main():
     parser.add_argument('--cleanup', type=float, default=5)
     parser.add_argument('--fps', type=int, default=30)
     parser.add_argument('--duration', type=float, default=60)
+    parser.add_argument('--shared', action='store_true')
+    parser.add_argument('--idle', type=float, default=120)
     parser.add_argument('--log', action='store_true')
     args = parser.parse_args()
     try:
-        SessionConfig(args.duration, args.fps, args.startup, args.cleanup)
+        if args.shared:
+            from .shared_rules import SharedConfig
+            SharedConfig.from_env(dict(SIM_MAX_RUNTIME_SECONDS=args.duration, SIM_SESSION_FPS=args.fps,
+                SIM_SESSION_STARTUP_SECONDS=args.startup, SIM_SESSION_CLEANUP_SECONDS=args.cleanup,
+                SIM_IDLE_TIMEOUT_SECONDS=args.idle))
+        else:
+            SessionConfig(args.duration, args.fps, args.startup, args.cleanup)
     except ValueError as error:
         parser.error(str(error))
     Path(args.directory).mkdir(parents=True, exist_ok=True)

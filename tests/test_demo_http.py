@@ -1,33 +1,40 @@
-"""Exercise Modal's actual ASGI factory without cloud compute or a database."""
+"""Exercise the hosted HTTP contract without allocating cloud compute."""
+import asyncio
 import importlib.util
 import unittest
 from unittest.mock import patch
-
-from test_demo_hosted import MemoryStore
-from sims.demo.hosted import HostedService
-from sims.demo.rules import SUPPORTED
+from sims.demo.hosted_store import ModalStore
+from sims.demo.shared import SharedService
+from test_shared import Dictionary, Room
 
 
 @unittest.skipUnless(importlib.util.find_spec('fastapi'), 'install requirements-modal.txt')
 class HttpTests(unittest.TestCase):
-    def test_auth_launch_ownership_and_strict_input(self):
+    def test_private_auth_public_instances_and_no_worker_or_stop_routes(self):
         from fastapi.testclient import TestClient
         import modal_app
-        svc = HostedService(MemoryStore(), dict(SIM_SUPERVISOR_KEY='k'*32, SIM_IMAGE_VERSION='test'),
-                            [dict(id=s, available=True) for s in SUPPORTED])
-        with patch.object(modal_app, 'service', return_value=svc):
-            app = modal_app.api.local()
-        headers = {'Authorization':'Bearer '+'k'*32, 'X-Demo-Owner':'owner-aaaaaaaaaaaa'}
-        with TestClient(app) as client, patch.object(modal_app, 'command', side_effect=lambda action,*args: svc.launch(*args) if action=='launch' else svc.report(*args)), patch.object(modal_app, 'request_dispatch') as spawn:
-            self.assertEqual(client.get('/sessions').status_code,401)
-            self.assertEqual(len(client.get('/simulations',headers=headers).json()),len(SUPPORTED))
-            self.assertEqual(client.post('/sessions',headers=headers,json={'extra':True}).status_code,422)
-            response = client.post('/sessions',headers=headers,json={
-                'simulation_id':SUPPORTED[0], 'request_id':'request-aaaaaaaaaa'})
-            self.assertEqual(response.status_code,202,response.text)
-            identifier = response.json()['id']
-            spawn.assert_called_once_with()
-            self.assertEqual(client.get('/sessions/'+identifier, headers={**headers,
-                'X-Demo-Owner':'another-owner-aaaa'}).status_code,404)
-            self.assertEqual(client.post('/workers/'+identifier+'/events',json={'state':'ready'}).status_code,401)
+        room=Room()
+        svc=SharedService(ModalStore(Dictionary(),'test',writable=True),
+            dict(SIM_SUPERVISOR_KEY='k'*32,LIVEKIT_URL='ws://local',LIVEKIT_API_KEY='key',LIVEKIT_API_SECRET='s'*32),
+            [dict(id='vacuum',available=True)],lambda *_:room)
+        with patch.object(modal_app,'service',return_value=svc):
+            app=modal_app.api.local()
+        def execute(action,*args): return asyncio.run(svc.handle(action,*args))
+        headers={'Authorization':'Bearer '+'k'*32,'X-Demo-Owner':'owner-aaaaaaaaaaaa'}
+        with patch.object(modal_app,'service',return_value=svc), TestClient(app) as client, \
+                patch.object(modal_app,'command',side_effect=execute), patch.object(modal_app,'request_dispatch'):
+            self.assertEqual(client.get('/simulations').status_code,401)
+            self.assertEqual(client.get('/simulations',headers=headers).status_code,200)
+            response=client.post('/simulations/vacuum/watch',headers=headers,json={})
+            self.assertEqual(response.status_code,200,response.text)
+            identifier=response.json()['id']
+            other={**headers,'X-Demo-Owner':'owner-bbbbbbbbbbbb'}
+            self.assertEqual(client.get('/instances/'+identifier,headers=other).status_code,200)
+            self.assertEqual(client.post('/simulations/vacuum/watch',headers=other,json={}).json()['id'],identifier)
+            self.assertEqual(client.delete('/instances/'+identifier,headers=headers).status_code,405)
+            self.assertEqual(client.post('/workers/'+identifier+'/events',headers=headers,json={}).status_code,404)
+            self.assertEqual(client.post('/queue',headers=headers,json=[]).status_code,400)
+            credential=client.post('/credentials',headers=headers,json={}).json()
+            self.assertIn('proof',credential)
+            self.assertNotIn('SIM_SUPERVISOR_KEY',response.text)
             self.assertEqual(response.headers['cache-control'],'no-store')
