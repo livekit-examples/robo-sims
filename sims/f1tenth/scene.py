@@ -12,7 +12,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 import numpy as np
 
 from ..mujoco_tools import mujoco
-from .visuals import CYAN, MeshBuilder, loft, textures
+from .visuals import CYAN, WALL_TOP_V, WALL_V, MeshBuilder, atlas_cell, loft, spokes, textures
 
 LOG = logging.getLogger("sims.f1tenth.scene")
 
@@ -29,6 +29,22 @@ CAMERAS = {
     # Rigid third-person chase view (no smoothing, so camera_info stays exact).
     "chase": ((-0.78, 0.0, 0.25), (0.6, 0.0, 0.03)),
 }
+
+# Indicator and wheel colors (linear RGB) for per-frame geom_rgba updates.
+BRAKE_RED, AMBER = (1.0, 0.06, 0.04), (1.0, 0.55, 0.08)
+SPOKE, RIM = (0.68, 0.7, 0.74), (0.11, 0.12, 0.13)
+SPOKE_RGB, RIM_RGB = np.array(SPOKE), np.array(RIM)
+STEERING_LOCK = 1.4  # steering-wheel radians at full road-wheel lock
+MAX_SPIN = 24.0  # rad/s of visible spoke rotation; ~0.4 rad per 60 fps frame
+
+
+def _rgba(color, level):
+    return (*(level * np.asarray(color, dtype=float)), 1.0)
+
+
+def _rgb(color, level):
+    return numbers(_rgba(color, level))
+
 
 # shadow: shadow-map size (0 disables); msaa: offscreen samples; scenery: trees/hills/stands.
 # "auto" picks "high" on a GPU and "medium" on a software rasterizer (llvmpipe/OSMesa),
@@ -74,7 +90,7 @@ class Scene:
         self.model = mujoco.MjModel.from_xml_string(self._xml(), assets=textures())
         self.data = mujoco.MjData(self.model)
         self.render_data = mujoco.MjData(self.model)
-        self.steer_ids = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"steer{i}") for i in range(2)]
+        self._bind_runtime()
         self.camera_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, "onboard")
         self.update()
 
@@ -103,10 +119,12 @@ class Scene:
         assets = SubElement(root, "asset")
         SubElement(assets, "texture", name="sky", type="skybox", builtin="gradient",
                    rgb1="0.30 0.50 0.78", rgb2="0.86 0.90 0.94", width="256", height="256")
-        for name in ("asphalt", "curb", "grass", "hoarding", "crowd", "building"):
+        for name in ("asphalt", "curb", "grass", "hoarding", "crowd", "building", "rubber", "livery",
+                     "podlivery"):
             SubElement(assets, "texture", name=name, type="2d", file=f"{name}.png")
         SubElement(assets, "texture", name="checker", type="2d", builtin="checker",
                    rgb1="0.96 0.96 0.96", rgb2="0.04 0.04 0.04", width="64", height="64")
+        SubElement(assets, "texture", name="weave", type="2d", file="carbon.png")
         materials = {
             "road": dict(texture="asphalt", specular="0.12", shininess="0.15"),
             "curb": dict(texture="curb", specular="0.25", shininess="0.3"),
@@ -115,18 +133,29 @@ class Scene:
             "crowd": dict(texture="crowd", specular="0", shininess="0"),
             "building": dict(texture="building", specular="0.3", shininess="0.5"),
             "checker": dict(texture="checker", specular="0.1"),
-            "shadow": dict(rgba="0 0 0 0.22", specular="0", shininess="0"),
+            # Untextured so distant lines stay crisp (no mipmap blur at grazing angles).
+            "edge_line": dict(rgba="0.86 0.86 0.84 1", specular="0.15", shininess="0.3"),
+            "rubber_line": dict(texture="rubber", rgba="1 1 1 0.45", specular="0.05", shininess="0.2"),
+            # Stacked layers in one mesh: each adds ~10% darkness toward the center.
+            "shadow": dict(rgba="0 0 0 0.1", specular="0", shininess="0"),
             "steel": dict(rgba="0.62 0.64 0.67 1", specular="0.5", shininess="0.6"),
             "foliage": dict(rgba="0.13 0.27 0.12 1", specular="0", shininess="0"),
             "hills": dict(rgba="0.26 0.38 0.27 1", specular="0"),
             "mountains": dict(rgba="0.38 0.46 0.55 1", specular="0"),
             "lamp": dict(rgba="0.9 0.05 0.05 1", emission="0.6"),
-            # Car livery: gloss black with LiveKit cyan accents.
-            "paint": dict(rgba="0.075 0.085 0.1 1", specular="1", shininess="0.9"),
-            "accent": dict(rgba=f"{CYAN[0]} {CYAN[1]} {CYAN[2]} 1", specular="0.6", shininess="0.8", emission="0.12"),
-            "carbon": dict(rgba="0.02 0.02 0.024 1", specular="0.4", shininess="0.5"),
-            "rubber": dict(rgba="0.035 0.035 0.038 1", specular="0.04", shininess="0.1"),
-            "rim": dict(rgba="0.16 0.17 0.19 1", specular="0.8", shininess="0.9"),
+            # Car livery: gloss black with LiveKit cyan accents. The loft textures carry a
+            # painted-on sky/ground gradient and shoulder highlight for contrast without
+            # reflections; materials keep a tight, bright specular.
+            "livery": dict(texture="livery", specular="1", shininess="0.97"),
+            "podlivery": dict(texture="podlivery", specular="1", shininess="0.97"),
+            "paint": dict(rgba="0.06 0.07 0.085 1", specular="1", shininess="0.95"),
+            "accent": dict(rgba=f"{CYAN[0]} {CYAN[1]} {CYAN[2]} 1", specular="0.9", shininess="0.92", emission="0.2"),
+            "carbon": dict(texture="weave", texrepeat="140 140", texuniform="true", specular="0.75", shininess="0.85"),
+            "rubber": dict(rgba="0.035 0.035 0.038 1", specular="0.06", shininess="0.15"),
+            "rim": dict(rgba="0.11 0.12 0.13 1", specular="0.8", shininess="0.9"),
+            "spoke": dict(rgba="0.68 0.7 0.74 1", specular="0.9", shininess="0.92"),
+            # Self-lit indicators; per-frame geom_rgba sets their color and intensity.
+            "indicator": dict(rgba="1 1 1 1", emission="1", specular="0.3", shininess="0.6"),
             "white": dict(rgba="0.93 0.93 0.93 1", specular="0.6", shininess="0.8"),
             "visor": dict(rgba="0.02 0.03 0.05 1", specular="1", shininess="1"),
         }
@@ -161,23 +190,55 @@ class Scene:
             return np.column_stack((xy, np.full(len(xy), z)))
 
         meshes = {}
+        curvature = _curvature(track)
+        racing_line = _racing_line(track, curvature)
+        line = racing_line[ring]
+        # Five columns across the road: fixed painted edge zones (u 0-0.06 and
+        # 0.94-1) and the texture's rubbered groove (u 0.5) on the racing line.
+        width = left_w + right_w
+        lateral = [left_w, left_w - 0.06 * width, line, -right_w + 0.06 * width, -right_w]
+        columns = [points + ring_normals * offset[:, None] for offset in lateral]
         road = MeshBuilder()
-        left, right = points + ring_normals * left_w[:, None], points - ring_normals * right_w[:, None]
         v = arc / 2.2
-        road.strip(lift(left, ROAD_Z), lift(right, ROAD_Z), np.column_stack((np.zeros(n + 1), v)),
-                   np.column_stack((np.ones(n + 1), v)))
+        for (a, ua), (b, ub) in zip(zip(columns, (0, 0.06, 0.5, 0.94, 1)), zip(columns[1:], (0.06, 0.5, 0.94, 1))):
+            road.strip(lift(a, ROAD_Z), lift(b, ROAD_Z), np.column_stack((np.full(n + 1, ua), v)),
+                       np.column_stack((np.full(n + 1, ub), v)))
         meshes["road"] = road
 
+        # White edge lines as their own flat strips (u 0.018-0.045 of the width in
+        # from each edge). Geometry keeps them sharp at any distance.
+        lines = MeshBuilder()
+        flat = np.zeros((n + 1, 2))
+        for outer_edge, inner_edge in ((left_w - 0.018 * width, left_w - 0.045 * width),
+                                       (-right_w + 0.045 * width, -right_w + 0.018 * width)):
+            a = _offset_line(points + ring_normals * outer_edge[:, None])
+            b = _offset_line(points + ring_normals * inner_edge[:, None])
+            lines.strip(lift(a, ROAD_Z + 0.0005), lift(b, ROAD_Z + 0.0005), flat, flat)
+        meshes["edge_line"] = lines
+
+        # Extra rubber laid down through the bends: a translucent strip on the
+        # racing line that fades in on the brakes and out on the exit.
+        corner = _smooth((np.abs(curvature) > 0.05).astype(float), 2.5 / track.lengths.mean())
+        rubber = MeshBuilder()
+        for run in _runs(corner > 0.04):
+            idx = np.r_[run, (run[-1] + 1) % n]
+            half = 0.25 * np.clip(corner[idx] * 1.6, 0, 1)
+            centre = track.points[idx] + normals[idx] * racing_line[idx][:, None]
+            along = np.unwrap(arc[idx], period=track.length) / 2.0
+            rubber.strip(lift(centre + normals[idx] * half[:, None], ROAD_Z + 0.0004),
+                         lift(centre - normals[idx] * half[:, None], ROAD_Z + 0.0004),
+                         np.column_stack((np.zeros(len(idx)), along)), np.column_stack((np.ones(len(idx)), along)))
+        if rubber:
+            meshes["rubber_line"] = rubber
+
         # Curbs only where the circuit bends, like a real track.
-        heading = np.arctan2(track.tangents[:, 1], track.tangents[:, 0])
-        bend = np.angle(np.exp(1j * (heading - np.roll(heading, 1)))) / track.lengths
-        bend = np.abs(np.convolve(np.r_[bend[-6:], bend, bend[:6]], np.ones(13) / 13, "valid")) > 0.05
+        bend = np.abs(curvature) > 0.05
         mask = np.convolve(np.r_[bend[-8:], bend, bend[:8]], np.ones(17), "valid") > 0
         curbs = MeshBuilder()
         for run in _runs(mask):
             idx = np.r_[run, (run[-1] + 1) % n]
             p, q = track.points[idx], normals[idx]
-            along = np.unwrap(arc[idx], period=track.length) / 0.32
+            along = np.unwrap(arc[idx], period=track.length) / 1.28  # four stripe pairs per tile
             for sign, widths in ((1, track.rows[idx, 3]), (-1, track.rows[idx, 2])):
                 inner = p + sign * q * widths[:, None]
                 outer = p + sign * q * (widths[:, None] + 0.14)
@@ -194,17 +255,21 @@ class Scene:
         walls = MeshBuilder()
         offset = track.barrier_runoff
         for sign, widths in ((1, left_w), (-1, right_w)):
-            inner = points + sign * ring_normals * (widths + offset)[:, None]
-            outer = points + sign * ring_normals * (widths + offset + 0.05)[:, None]
+            # Trim fold-backs on hairpin insides so the wall follows the true
+            # physics boundary instead of cutting across the road.
+            inner = _offset_line(points + sign * ring_normals * (widths + offset)[:, None])
+            outer = _offset_line(points + sign * ring_normals * (widths + offset + 0.05)[:, None])
             u = sign * arc / 8.0
             for i in range(n):
                 j = i + 1
+                if np.linalg.norm(inner[j] - inner[i]) < 1e-6 and np.linalg.norm(outer[j] - outer[i]) < 1e-6:
+                    continue  # collapsed into the fold-back corner
                 bi, bj = (*inner[i], GRASS_Z), (*inner[j], GRASS_Z)
                 ti, tj = (*inner[i], 0.24), (*inner[j], 0.24)
                 oi, oj = (*outer[i], 0.24), (*outer[j], 0.24)
                 gi, gj = (*outer[i], GRASS_Z), (*outer[j], GRASS_Z)
-                face = ((u[i], 0), (u[j], 0), (u[j], 1), (u[i], 1))
-                top = ((u[i], 0.02), (u[j], 0.02), (u[j], 0.03), (u[i], 0.03))
+                face = ((u[i], WALL_V[0]), (u[j], WALL_V[0]), (u[j], WALL_V[1]), (u[i], WALL_V[1]))
+                top = ((u[i], WALL_TOP_V[0]), (u[j], WALL_TOP_V[0]), (u[j], WALL_TOP_V[1]), (u[i], WALL_TOP_V[1]))
                 if sign > 0:
                     walls.quad(bi, bj, tj, ti, face)
                     walls.quad(ti, tj, oj, oi, top)
@@ -213,6 +278,7 @@ class Scene:
                     walls.quad(bj, bi, ti, tj, (face[1], face[0], face[3], face[2]))
                     walls.quad(tj, ti, oi, oj, top)
                     walls.quad(gi, gj, oj, oi, face)
+        self._signs(walls, track, curvature, normals)
         meshes["hoarding"] = walls
 
         # Checkered start/finish line across the road.
@@ -226,6 +292,39 @@ class Scene:
         if self.quality["scenery"]:
             meshes.update(self._surroundings(track, center, normals))
         return meshes
+
+    def _signs(self, walls, track, curvature, normals):
+        """3-2-1 braking boards on the outside before each real corner and an apex
+        chevron on the inside, merged into the barrier mesh (no extra geoms)."""
+        n, arc = len(track.points), track.arc
+        z_axis = np.array([0.0, 0.0, 1.0])
+        back = atlas_cell("back")
+
+        def frame(s, side, toward_road):
+            s %= track.length
+            i = int(np.searchsorted(arc, s, side="right") - 1) % n
+            t, q = track.tangents[i], normals[i]
+            width = track.rows[i, 3 if side > 0 else 2]
+            point = track.points[i] + t * (s - arc[i]) + side * q * (width + track.barrier_runoff + 0.025)
+            facing = -t * math.cos(toward_road) - side * q * math.sin(toward_road)
+            facing3 = np.array([*facing, 0.0])
+            return point, np.cross(z_axis, facing3), facing3
+
+        def place(s, side, cell, half_w, half_h, toward_road):
+            point, right, _ = frame(s, side, toward_road)
+            # Skip spots where the barrier line folds back toward the road (tight hairpin insides).
+            nearest = track.project(point)
+            if abs(nearest.lateral) - nearest.half_width < track.barrier_runoff * 0.9:
+                return
+            walls.panel((*point, 0.245 + half_h), right, z_axis, half_w, half_h, 0.006, atlas_cell(cell), back)
+
+        for entry, apex, direction, straight in _corners(track, curvature):
+            outside = -direction  # left turn (positive curvature) -> boards on the right
+            for label, distance in (("3", 7.5), ("2", 5.0), ("1", 2.5)):
+                if straight >= distance + 1.0:
+                    place(arc[entry] - distance, outside, label, 0.12, 0.12, math.radians(18))
+            place(arc[apex] + 0.4, direction, "apex_left" if direction > 0 else "apex_right", 0.11, 0.08,
+                  math.radians(35))
 
     def _surroundings(self, track, center, normals):
         rng = np.random.default_rng(3)
@@ -337,20 +436,27 @@ class Scene:
             SubElement(assets, "mesh", name=name, **builder.attributes())
             geom(material, type="mesh", mesh=name)
 
-        # Soft contact shadow: stacked translucent ellipses (cheap, no shadow pass).
+        # Soft contact shadow without a shadow pass: one mesh of stacked translucent
+        # ellipses (largest lowest) plus darker patches under each tire.
         ground = ROAD_Z - BODY_Z
-        for k, (sx, sy) in enumerate(((0.33, 0.18), (0.3, 0.155), (0.27, 0.13))):
-            geom("shadow", type="ellipsoid", pos=f"-0.01 0 {ground + 0.0006 + 0.0003 * k}", size=f"{sx} {sy} 0.0002")
+        shadow = MeshBuilder()
+        for k in range(6):
+            f = 1 - k / 7
+            shadow.disc((-0.01, 0, ground + 0.0006 + 0.00012 * k), 0.36 * f + 0.06, 0.2 * f + 0.03)
+        for x, y in car.contacts:
+            for k in range(2):
+                shadow.disc((x, y, ground + 0.0014 + 0.00012 * k), 0.034 - 0.01 * k, 0.03 - 0.008 * k, sides=12)
+        mesh("contact_shadow", shadow, "shadow")
         mesh("monocoque", loft([
             (0.292, 0.010, -0.040, -0.027, 2.2), (0.25, 0.017, -0.042, -0.019, 2.4),
             (0.17, 0.027, -0.043, -0.004, 2.6), (0.08, 0.037, -0.044, 0.014, 2.8),
             (0.00, 0.045, -0.045, 0.024, 3.0), (-0.09, 0.050, -0.045, 0.026, 3.0),
             (-0.125, 0.050, -0.045, 0.05, 3.0), (-0.165, 0.044, -0.044, 0.066, 2.8),
-            (-0.215, 0.032, -0.040, 0.040, 2.6), (-0.262, 0.016, -0.034, 0.010, 2.4)]), "paint")
+            (-0.215, 0.032, -0.040, 0.040, 2.6), (-0.262, 0.016, -0.034, 0.010, 2.4)]), "livery")
         for sign, name in ((1, "pod_left"), (-1, "pod_right")):
             mesh(name, loft([(0.055, 0.010, -0.040, -0.014, 2.5), (0.03, 0.028, -0.043, 0.004, 3),
                              (-0.07, 0.031, -0.043, 0.006, 3), (-0.165, 0.015, -0.040, -0.014, 2.5)],
-                            y_offset=sign * 0.072), "paint")
+                            y_offset=sign * 0.072), "podlivery")
             # Cyan stripe along the pod and a mirror on a stalk.
             geom("accent", type="box", pos=f"-0.04 {sign * 0.1035} -0.02", size="0.07 0.0015 0.006")
             geom("carbon", type="capsule", fromto=f"0.0 {sign * 0.045} 0.018 0.005 {sign * 0.075} 0.034", size="0.002")
@@ -362,8 +468,12 @@ class Scene:
         geom("accent", type="box", pos="0.27 0 -0.026", size="0.02 0.006 0.0015")  # nose stripe
         geom("paint", type="box", pos="-0.215 0 0.05", size="0.05 0.0018 0.022")  # engine-cover fin
         geom("accent", type="box", pos="-0.2 0 0.068", size="0.03 0.002 0.003")
+        # ERS deployment light strip along the nose spine, in view of tcam and cockpit.
+        SubElement(body, "geom", name="ers_led", type="capsule", material="indicator", rgba=_rgb(CYAN, 0.3),
+                   fromto="0.1 0 0.0096 0.036 0 0.0191", size="0.0017")
         # Halo.
         geom("carbon", type="capsule", fromto="0.02 0 0.022 -0.002 0 0.05", size="0.0045")
+        self._steering_wheel(body, assets, car)
         for sign in (1, -1):
             geom("carbon", type="capsule", fromto=f"-0.002 0 0.05 -0.04 {sign * 0.03} 0.05", size="0.0045")
             geom("carbon", type="capsule", fromto=f"-0.04 {sign * 0.03} 0.05 -0.09 {sign * 0.04} 0.03", size="0.0045")
@@ -379,35 +489,100 @@ class Scene:
         geom("accent", type="box", pos="-0.262 0 0.081", size="0.012 0.124 0.002", euler="0 0.45 0")
         geom("paint", type="box", pos="-0.262 0.126 0.062", size="0.03 0.002 0.03")
         geom("paint", type="box", pos="-0.262 -0.126 0.062", size="0.03 0.002 0.03")
-        geom("lamp", type="box", pos="-0.287 0 0.0", size="0.003 0.01 0.004")
-        # Suspension wishbones to each hub.
+        SubElement(body, "geom", name="brake_light", type="box", material="indicator", rgba=_rgb(BRAKE_RED, 0.22),
+                   pos="-0.287 0 0.0", size="0.003 0.012 0.0045")
+        # Suspension wishbones to each hub, merged into one carbon mesh.
         radius = car.tuning["tire_radius"]
         hub_z = ROAD_Z + radius - BODY_Z
+        wishbones = MeshBuilder()
         for x, y in car.contacts:
             inner = 0.03 * math.copysign(1, y)
             for dx, z, dz in ((0.03, 0.002, 0.012), (-0.03, -0.03, -0.008)):
-                geom("carbon", type="capsule", size="0.0022", fromto=numbers([x + dx, inner, z, x, y * 0.82, hub_z + dz]))
-        # Wheels: slick tire, cyan sidewall band, dark rim, hub nut.
+                wishbones.tube((x + dx, inner, z), (x, y * 0.82, hub_z + dz), 0.0022)
+        mesh("wishbones", wishbones, "carbon")
+        # Wheels: slick tire, cyan sidewall band and dark rim (axisymmetric, steer
+        # only) around a bright five-spoke insert that spins with the wheel speed.
         axle = "0.7071068 0.7071068 0 0"
+        SubElement(assets, "mesh", name="spokes", **spokes(radius * 0.72, 0.0261).attributes())
         for i, (x, y) in enumerate(car.contacts):
             wheel = SubElement(body, "body", pos=numbers([x, y, hub_z]))
             if i < 2:
                 SubElement(wheel, "joint", name=f"steer{i}", type="hinge", axis="0 0 1")
             for r, half, mass, material in ((radius, 0.025, "0.1", "rubber"), (radius * 0.86, 0.0254, "0.001", "accent"),
-                                            (radius * 0.72, 0.0258, "0.01", "rim"), (radius * 0.16, 0.027, "0.001", "accent")):
+                                            (radius * 0.72, 0.0258, "0.01", "rim")):
                 SubElement(wheel, "geom", type="cylinder", size=f"{r} {half}", quat=axle, mass=mass, material=material)
+            spin = SubElement(wheel, "body", name=f"hub{i}")
+            SubElement(spin, "joint", name=f"spin{i}", type="hinge", axis="0 1 0")
+            SubElement(spin, "geom", name=f"spokes{i}", type="mesh", mesh="spokes", material="spoke",
+                       rgba=_rgb(SPOKE, 1.0), mass="0.005")
         position, target = CAMERAS[self.camera]
         SubElement(body, "camera", name="onboard", pos=numbers(position), xyaxes=_xyaxes(position, target),
                    fovy=str(math.degrees(2 * math.atan(self.height / self.width))))
 
+    def _steering_wheel(self, body, assets, car):
+        """Rectangular wheel on a raked column, visible low in tcam and cockpit views."""
+        column = SubElement(body, "body", name="steering", pos="-0.004 0 0.031", euler="0 -0.5 0")
+        SubElement(column, "joint", name="steering_wheel", type="hinge", axis="1 0 0")
+        wheel = MeshBuilder()
+        wheel.box((0, 0, 0), 0, (0.0025, 0.014, 0.007), tile=0.02, bottom=True)
+        for sign in (1, -1):
+            wheel.box((0, sign * 0.0175, -0.0005), 0, (0.0035, 0.0038, 0.0095), tile=0.02, bottom=True)
+        SubElement(assets, "mesh", name="steering_wheel", **wheel.attributes())
+        SubElement(column, "geom", type="mesh", mesh="steering_wheel", material="paint", mass="0.005")
+        # Shift/rev light bar across the top of the wheel, facing the driver.
+        SubElement(column, "geom", name="rev_led", type="box", material="indicator", rgba=_rgb(CYAN, 0.2),
+                   pos="-0.0023 0 0.0048", size="0.0008 0.012 0.0016", mass="0.0001")
+
     # ---------------------------------------------------------------- runtime
+    def _bind_runtime(self):
+        model = self.model
+
+        def ids(kind, *names):
+            return [mujoco.mj_name2id(model, kind, name) for name in names]
+
+        self.steer_ids = ids(mujoco.mjtObj.mjOBJ_JOINT, "steer0", "steer1")
+        self.spin_adr = [model.jnt_qposadr[j] for j in ids(mujoco.mjtObj.mjOBJ_JOINT, *(f"spin{i}" for i in range(4)))]
+        self.steering_adr = model.jnt_qposadr[ids(mujoco.mjtObj.mjOBJ_JOINT, "steering_wheel")[0]]
+        self.spoke_geoms = ids(mujoco.mjtObj.mjOBJ_GEOM, *(f"spokes{i}" for i in range(4)))
+        self.brake_geom, self.ers_geom, self.rev_geom = ids(mujoco.mjtObj.mjOBJ_GEOM, "brake_light", "ers_led", "rev_led")
+        self.spin = np.zeros(4)
+        self.last_time = self.car.time
+
     def update(self):
         car = self.car
-        self.data.mocap_pos[0] = [car.x, car.y, BODY_Z]
-        self.data.mocap_quat[0] = [math.cos(car.yaw / 2), 0, 0, math.sin(car.yaw / 2)]
+        data, model = self.data, self.model
+        data.mocap_pos[0] = [car.x, car.y, BODY_Z]
+        data.mocap_quat[0] = [math.cos(car.yaw / 2), 0, 0, math.sin(car.yaw / 2)]
+        angles = car.wheel_angles()
         for i, joint in enumerate(self.steer_ids):
-            self.data.qpos[self.model.jnt_qposadr[joint]] = car.wheel_angles()[i]
-        mujoco.mj_forward(self.model, self.data)
+            data.qpos[model.jnt_qposadr[joint]] = angles[i]
+        data.qpos[self.steering_adr] = -car.steering / car.p["max_steering"] * STEERING_LOCK
+        # Spokes: rotation is capped below the 60 fps wagon-wheel limit and the
+        # insert fades toward the rim color as it would motion-blur.
+        dt = min(max(car.time - self.last_time, 0.0), 0.1)
+        self.last_time = car.time
+        omega = np.asarray(car.wheels, dtype=float)
+        self.spin = np.remainder(self.spin + np.clip(omega, -MAX_SPIN, MAX_SPIN) * dt, 2 * math.pi)
+        data.qpos[self.spin_adr] = self.spin
+        blur = np.clip((np.abs(omega) - 12) / 40, 0, 0.6)[:, None]
+        model.geom_rgba[self.spoke_geoms, :3] = SPOKE_RGB * (1 - blur) + RIM_RGB * blur
+        # Brake light: dim tail light, full on under deceleration.
+        moving = abs(car.vx) > 0.05
+        decel = -car.ax * math.copysign(1, car.vx) if moving else 0.0
+        braking = float(np.clip(decel / 5.0, 0, 1)) if car.target.speed * car.vx <= car.vx * car.vx else 0.0
+        if not moving and car.target.speed == 0:
+            braking = max(braking, 0.35)
+        model.geom_rgba[self.brake_geom] = _rgba(BRAKE_RED, 0.22 + 0.78 * braking)
+        # ERS strip: brighter with drive deployment; amber when the pack runs low.
+        deploy = float(np.clip(car.ax * math.copysign(1, car.vx) / (0.5 * car.p["max_acceleration"]), 0, 1)) \
+            if moving and braking == 0 else 0.0
+        charge = car.battery.remaining_wh / car.battery.capacity_wh
+        model.geom_rgba[self.ers_geom] = _rgba(CYAN if charge > 0.2 else AMBER, 0.28 + 0.72 * deploy)
+        # Rev lights scale with speed and flash near the top of the gearing.
+        revs = float(np.clip(abs(car.vx) / car.p["speed_switch"], 0, 1))
+        flash = revs > 0.95 and int(car.time * 12) % 2
+        model.geom_rgba[self.rev_geom] = _rgba(BRAKE_RED if flash else CYAN, 0.2 + 0.8 * revs)
+        mujoco.mj_forward(model, data)
 
     def render_size(self, _key):
         return self.width, self.height
@@ -494,6 +669,51 @@ def _software_rasterizer():
     return any(word in name for word in ("llvmpipe", "softpipe", "swrast", "software", "osmesa", "offscreen"))
 
 
+def _smooth(values, sigma):
+    """Circular Gaussian smoothing over track samples (sigma in samples)."""
+    radius = max(1, int(3 * sigma))
+    kernel = np.exp(-0.5 * (np.arange(-radius, radius + 1) / max(sigma, 1e-6)) ** 2)
+    kernel /= kernel.sum()
+    return np.convolve(np.r_[values[-radius:], values, values[:radius]], kernel, "valid")
+
+
+def _curvature(track):
+    """Signed curvature per centerline sample (1/m, positive = left), lightly smoothed."""
+    heading = np.arctan2(track.tangents[:, 1], track.tangents[:, 0])
+    bend = np.angle(np.exp(1j * (heading - np.roll(heading, 1)))) / track.lengths
+    return np.convolve(np.r_[bend[-6:], bend, bend[:6]], np.ones(13) / 13, "valid")
+
+
+def _racing_line(track, curvature):
+    """Approximate outside-inside-outside line as a lateral offset per sample (+ = left).
+
+    A narrow curvature kernel pulls toward the apex; a wide one pushes wide on
+    entry and exit. Visual only: it steers the rubber texture, never the car.
+    """
+    step = track.lengths.mean()
+    offset = 5.0 * _smooth(curvature, 1.8 / step) - 6.0 * _smooth(curvature, 6.0 / step)
+    offset = _smooth(offset, 1.2 / step)
+    limit = np.minimum(track.rows[:, 2], track.rows[:, 3]) - 0.06 * track.rows[:, 2:].sum(axis=1) - 0.22
+    return limit * np.tanh(offset / limit)
+
+
+def _corners(track, curvature, peak=0.12, edge=0.05):
+    """(entry index, apex index, direction, straight meters before entry) per real corner."""
+    n = len(curvature)
+    out = []
+    for run in _runs(np.abs(curvature) > peak):
+        apex = int(run[np.argmax(np.abs(curvature[run]))])
+        entry = apex
+        while abs(curvature[(entry - 1) % n]) > edge and (apex - entry) < n // 4:
+            entry -= 1
+        straight, k = 0.0, entry - 1
+        while abs(curvature[k % n]) <= edge and straight < 30:
+            straight += track.lengths[k % n]
+            k -= 1
+        out.append((entry % n, apex, 1 if curvature[apex] > 0 else -1, straight))
+    return out
+
+
 def _runs(mask):
     """Index arrays of consecutive True entries in a circular boolean mask."""
     n = len(mask)
@@ -510,3 +730,34 @@ def _runs(mask):
     if current:
         runs.append(np.array(current))
     return runs
+
+
+def _offset_line(line, window=80):
+    """Remove the loops an offset polyline makes where a bend is tighter than the
+    offset: every vertex inside a self-intersection collapses onto the crossing
+    point, so the line keeps its vertex count but traces the outer envelope."""
+    line = np.array(line, dtype=float)
+    count = len(line)
+    i = 0
+    while i < count - 3:
+        a, b = line[i], line[i + 1]
+        crossing = None
+        for j in range(min(count - 2, i + window), i + 1, -1):  # farthest crossing removes the whole loop
+            c, d = line[j], line[j + 1]
+            r, q = b - a, d - c
+            denom = r[0] * q[1] - r[1] * q[0]
+            if abs(denom) < 1e-12:
+                continue
+            w = c - a
+            t = (w[0] * q[1] - w[1] * q[0]) / denom
+            v = (w[0] * r[1] - w[1] * r[0]) / denom
+            if 0 <= t <= 1 and 0 <= v <= 1:
+                crossing = (j, a + t * r)
+                break
+        if crossing is None:
+            i += 1
+            continue
+        j, point = crossing
+        line[i + 1:j + 1] = point
+        i = j
+    return line
