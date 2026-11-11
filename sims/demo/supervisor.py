@@ -343,4 +343,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # The classes above remain available for isolated private-session smoke tests.
+    # Customer pages use the same shared service as Modal.
+    from .shared_local import main as shared_main
+    shared_main()
