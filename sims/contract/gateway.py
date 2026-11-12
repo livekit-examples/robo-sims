@@ -12,6 +12,7 @@ from livekit import rtc
 from ..video_stats import VideoStats
 from ..video import capture_video
 
+from .. import fleet
 from .battery import BATTERY_STATE, BATTERY_STATE_SCHEMA, PERIOD, battery_state, battery_track
 from .config import CARTESIAN, Configuration, JOINT_STATE, POSE_STAMPED, interface_of
 from .pose import parse_pose
@@ -32,6 +33,7 @@ class ContractGateway:
         self.video_stats = video_stats
         self.operator_prefix = operator_prefix
         self.expired = False
+        self.sim_name = None
         self.shared_instance = None
         self.last_activity = None
         self._grant_clocks = {}
@@ -82,8 +84,13 @@ class ContractGateway:
             if self.armed and not self._compatible(self.active_operator):
                 self._disarm()
                 self.active_operator = ''
-                await self.room.local_participant.set_attributes({OWNER: ''})
+                await self._write_owner('')
             await asyncio.sleep(.05)
+
+    async def _write_owner(self, owner):
+        """Publish the active operator with the control mode that follows from it."""
+        await self.room.local_participant.set_attributes(
+            {OWNER: owner, fleet.CONTROL: fleet.control_mode(owner)})
 
     def _accepts(self, identity):
         return not self.expired and self.armed and identity == self.active_operator and self._compatible(identity)
@@ -247,7 +254,7 @@ class ContractGateway:
             self._disarm()
             # Keep receive gate closed until the attribute write succeeds.
             try:
-                await self.room.local_participant.set_attributes({OWNER: target})
+                await self._write_owner(target)
             except Exception as error:
                 raise rtc.RpcError(2002, "Failed to update active operator") from error
             self.active_operator = target
@@ -256,7 +263,8 @@ class ContractGateway:
 
     async def _publish(self):
         participant = self.room.local_participant
-        attributes = {ROLE: 'robot', VERSION: '3', OWNER: ''}
+        attributes = {ROLE: 'robot', VERSION: '3', OWNER: '', fleet.MODEL: self.config.discovery['label'],
+                      fleet.CONTROL: fleet.control_mode(''), **fleet.location_attributes(self.sim_name)}
         if self.shared_instance:
             from ..demo.shared_rules import INSTANCE, GENERATION, SIMULATION
             attributes.update({INSTANCE: self.shared_instance, GENERATION: self.shared_instance,

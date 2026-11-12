@@ -5,7 +5,7 @@ import logging
 
 from livekit import rtc
 
-from ..contract.gateway import ContractGateway, OWNER
+from ..contract.gateway import ContractGateway
 from ..contract.battery import PERIOD
 from ..contract.rtc_schema import define_json_schema, publish_json
 from ..contract.schemas import schema_for
@@ -93,7 +93,7 @@ class DriveGateway(ContractGateway):
             self._disarm()
             self.active_operator = ""
             if self.room.isconnected():
-                await self.room.local_participant.set_attributes({OWNER: ""})
+                await self._write_owner("")
         LOG.warning("Drive disarmed: %s; request control and arm a fresh input", reason)
 
     async def _simulate(self):

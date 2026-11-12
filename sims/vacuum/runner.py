@@ -55,6 +55,7 @@ async def serve(args, spec):
                       start=args.start, assist=not args.no_assist, auto_start=args.auto_start)
     try:
         gateway = VacuumGateway(backend, "", "", args.fps, video=not args.no_video, video_stats=args.video_stats)
+        gateway.sim_name = "vacuum"
         if args.check:
             print(json.dumps(check_report(backend), indent=2))
             return 0

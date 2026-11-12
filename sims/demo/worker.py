@@ -83,6 +83,7 @@ async def serve(args):
         module = importlib.import_module(spec.managed_module)
         gateway, policy = module.create(spec, os.environ['LIVEKIT_URL'], os.environ['LIVEKIT_TOKEN'],
                                         None if getattr(args, 'shared', False) else f'demo-op-{args.id}-', fps=args.fps)
+        gateway.sim_name = args.simulation
         if getattr(args, 'shared', False):
             gateway.shared_instance = args.id
             gateway.shared_simulation = args.simulation

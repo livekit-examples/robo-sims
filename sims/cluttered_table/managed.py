@@ -12,7 +12,8 @@ def create(spec, url: str, token: str, operator_prefix: str, *, fps: int = 12):
     config = Configuration.load(CONFIGS / f'{spec.name}.bindings.json', fps)
     assets = SOURCES['trossen_arm_mujoco'].path / 'assets'
     # The scene builds its own model, so the bindings name no model file.
-    scene = TrossenSimulation(assets, spec.options['scene'], 160, 120, 480, 360, renderer='classic')
+    scene = TrossenSimulation(assets, spec.options['scene'], width=640, height=480,
+                             scene_width=960, scene_height=720, renderer='classic')
     try:
         scene.model.vis.quality.offsamples = 2
         scene.model.vis.quality.shadowsize = 1024

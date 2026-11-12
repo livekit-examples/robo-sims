@@ -11,7 +11,9 @@ def create(spec, url: str, token: str, operator_prefix: str, *, fps: int = 12):
         raise ValueError('fps must be a positive integer')
     config = Configuration.load(CONFIGS / f'{spec.name}.bindings.json', fps)
     assets = SOURCES['trossen_arm_mujoco'].path / 'assets'
-    scene = TrossenSimulation(assets, spec.options['scene'], 160, 120, 480, 360,
+    # Preserve camera detail when the workspace enlarges the stereo video.
+    scene = TrossenSimulation(assets, spec.options['scene'], width=640, height=480,
+                             scene_width=960, scene_height=720,
                              model_path=assets / config.bindings['model'], renderer='classic')
     try:
         scene.model.vis.quality.offsamples = 2

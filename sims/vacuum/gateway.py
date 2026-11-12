@@ -6,7 +6,7 @@ import logging
 from livekit import rtc
 
 from ..contract.battery import PERIOD
-from ..contract.gateway import ContractGateway, OWNER
+from ..contract.gateway import ContractGateway
 from ..contract.rtc_schema import define_json_schema, publish_json
 from .backend import COMMAND, KIND, TWIST_SCHEMA
 from .simulation import PHYSICS_DT
@@ -123,7 +123,7 @@ class VacuumGateway(ContractGateway):
             self._disarm()
             self.active_operator = ""
             if self.room.isconnected():
-                await self.room.local_participant.set_attributes({OWNER: ""})
+                await self._write_owner("")
         LOG.warning("Drive disarmed: %s; request control and arm a fresh input", reason)
 
     async def _simulate(self):
