@@ -50,6 +50,7 @@ async def serve(args, spec):
             from ..trossen.filament import service_macos_events
             events = asyncio.create_task(service_macos_events())
         gateway = DriveGateway(backend, "", "", args.fps, video=not args.no_video, video_stats=args.video_stats)
+        gateway.sim_name = "f1tenth"
         if args.check:
             print(json.dumps({**gateway.discovery(), "simulation": {
                 "track": "Spielberg", "track_length_m": backend.car.track.length,

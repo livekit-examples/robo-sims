@@ -12,6 +12,7 @@ from livekit import rtc
 from ..video_stats import VideoStats
 from ..video import capture_video
 
+from .. import fleet
 from .battery import BATTERY_STATE, BATTERY_STATE_SCHEMA, PERIOD, battery_state, battery_track
 from .config import CARTESIAN, Configuration, JOINT_STATE, POSE_STAMPED, interface_of
 from .pose import parse_pose
@@ -32,6 +33,11 @@ class ContractGateway:
         self.video_stats = video_stats
         self.operator_prefix = operator_prefix
         self.expired = False
+        self.sim_name = None
+        self.shared_instance = None
+        self.last_activity = None
+        self._grant_clocks = {}
+        self._last_commands = {}
         self._feedback_ready = False
         self._video_ready = set()
         self.room = SchemaRoom()
@@ -52,6 +58,37 @@ class ContractGateway:
         peer = self.room.remote_participants.get(identity)
         return (peer is not None and peer.attributes.get(ROLE) in roles
                 and peer.attributes.get(VERSION) == "3")
+
+    def _managed_grant(self, peer):
+        from ..demo.shared_rules import CONTROL_ROBOT, GENERATION, UNTIL
+        try:
+            until = int(peer.attributes.get(UNTIL, '0'))
+        except (ValueError, TypeError):
+            return False
+        if peer.attributes.get(CONTROL_ROBOT) != self.room.local_participant.identity or \
+                peer.attributes.get(GENERATION) != self.shared_instance:
+            return False
+        key = (peer.identity, until)
+        if key not in self._grant_clocks:
+            self._grant_clocks = {k: v for k, v in self._grant_clocks.items() if k[0] != peer.identity}
+            self._grant_clocks[key] = time.monotonic() + max(0, until/1000-time.time())
+        return (peer.attributes.get(CONTROL_ROBOT) == self.room.local_participant.identity and
+                peer.attributes.get(GENERATION) == self.shared_instance and
+                peer.permissions.can_publish_data and peer.permissions.can_publish and
+                self._grant_clocks[key] > time.monotonic())
+
+    async def _control_guard(self):
+        while True:
+            if self.armed and not self._compatible(self.active_operator):
+                self._disarm()
+                self.active_operator = ''
+                await self._write_owner('')
+            await asyncio.sleep(.05)
+
+    async def _write_owner(self, owner):
+        """Publish the active operator with the control mode that follows from it."""
+        await self.room.local_participant.set_attributes(
+            {OWNER: owner, fleet.CONTROL: fleet.control_mode(owner)})
 
     def _accepts(self, identity):
         return not self.expired and self.armed and identity == self.active_operator and self._compatible(identity)
@@ -184,7 +221,7 @@ class ContractGateway:
             self._disarm()
             # Keep receive gate closed until the attribute write succeeds.
             try:
-                await self.room.local_participant.set_attributes({OWNER: target})
+                await self._write_owner(target)
             except Exception as error:
                 raise rtc.RpcError(2002, "Failed to update active operator") from error
             self.active_operator = target
@@ -193,7 +230,13 @@ class ContractGateway:
 
     async def _publish(self):
         participant = self.room.local_participant
-        await participant.set_attributes({ROLE: "robot", VERSION: "3", OWNER: ""})
+        attributes = {ROLE: 'robot', VERSION: '3', OWNER: '', fleet.MODEL: self.config.discovery['label'],
+                      fleet.CONTROL: fleet.control_mode(''), **fleet.location_attributes(self.sim_name)}
+        if self.shared_instance:
+            from ..demo.shared_rules import INSTANCE, GENERATION, SIMULATION
+            attributes.update({INSTANCE: self.shared_instance, GENERATION: self.shared_instance,
+                SIMULATION: self.shared_simulation, 'lk.robot': 'true'})
+        await participant.set_attributes(attributes)
         response = json.dumps(self.discovery(), allow_nan=False, separators=(",", ":"))
 
         @participant.register_rpc_method("get_robot_config")

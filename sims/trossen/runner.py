@@ -364,6 +364,7 @@ async def _serve(args, sim_spec, sim, config) -> int:
 
         bridge = ContractGateway(backend, config, creds.url, creds.token, args.fps,
                                  video=not args.no_video, video_stats=args.video_stats)
+        bridge.sim_name = sim_spec.name
     else:
         bridge = SimParticipant(sim, creds.url, creds.token, args.fps, args.controller_prefix,
                                 video_stats=args.video_stats)

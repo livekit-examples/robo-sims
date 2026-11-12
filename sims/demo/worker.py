@@ -72,7 +72,11 @@ async def serve(args):
             raise ValueError('This simulation does not support managed discovery.')
         module = importlib.import_module(spec.managed_module)
         gateway, policy = module.create(spec, os.environ['LIVEKIT_URL'], os.environ['LIVEKIT_TOKEN'],
-                                        f'demo-op-{args.id}-', fps=args.fps)
+                                        None if getattr(args, 'shared', False) else f'demo-op-{args.id}-', fps=args.fps)
+        gateway.sim_name = args.simulation
+        if getattr(args, 'shared', False):
+            gateway.shared_instance = args.id
+            gateway.shared_simulation = args.simulation
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, gateway.stopping.set)
