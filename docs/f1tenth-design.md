@@ -166,8 +166,7 @@ Proposed minimal discovery, **illustrative, not an enabled configuration**:
             "track_name": "/ackermann_cmd",
             "msg_type": "ackermann_msgs/msg/AckermannDrive",
             "format": "json"
-          },
-          "presentations": ["gamepad", "joystick", "keyboard"]
+          }
         }
       }
     }

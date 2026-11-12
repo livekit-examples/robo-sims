@@ -97,6 +97,22 @@ class SharedTests(unittest.IsolatedAsyncioTestCase):
             self.service.room_identity(credential['proof'], 'owner-bbbbbbbbbbbb')
         with self.assertRaises(Problem): verify('wrong', credential['proof'])
 
+    async def test_twenty_launches_per_visitor_with_shared_joins_and_hourly_reset(self):
+        owner = 'owner-aaaaaaaaaaaa'
+        for _ in range(20):
+            run = self.service.watch(owner, 'f1tenth')
+            self.service.finish(run['id'])
+            self.time += 1000
+        with self.assertRaises(Problem) as caught:
+            self.service.watch(owner, 'f1tenth')
+        self.assertEqual(caught.exception.status, 429)
+        other = self.service.watch('owner-bbbbbbbbbbbb', 'f1tenth')
+        self.assertEqual(self.service.watch(owner, 'f1tenth')['id'], other['id'])
+        self.service.finish(other['id'])
+        self.time += 3600000
+        restarted = self.service.watch(owner, 'f1tenth')
+        self.assertNotEqual(restarted['id'], other['id'])
+
     async def test_fifo_two_queues_and_no_cross_queue_release(self):
         first, second = self.launch(), self.launch('vacuum')
         await self.viewer(first, 'a'); await self.viewer(first, 'b'); await self.viewer(second, 'c')

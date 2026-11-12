@@ -34,7 +34,7 @@ class HostedService:
         self.queue_limit = bounded(env.get('SIM_QUEUE_LIMIT', 200), 'queue limit', 1, 1000, True)
         self.queue_seconds = bounded(env.get('SIM_QUEUE_TIMEOUT_SECONDS', 900), 'queue timeout', 30, 3600, True)
         self.hourly = bounded(env.get('SIM_LAUNCHES_PER_HOUR', 120), 'hourly launches', 1, 10000, True)
-        self.visitor_hourly = bounded(env.get('SIM_VISITOR_LAUNCHES_PER_HOUR', 6), 'visitor launches', 1, 100, True)
+        self.visitor_hourly = bounded(env.get('SIM_VISITOR_LAUNCHES_PER_HOUR', 20), 'visitor launches', 1, 100, True)
         self.key = env['SIM_SUPERVISOR_KEY']
         if len(self.key) < 32:
             raise ValueError('SIM_SUPERVISOR_KEY must have at least 32 characters.')

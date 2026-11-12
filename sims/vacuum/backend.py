@@ -44,8 +44,7 @@ class Backend:
                     "control": {"scope": "robot", "ownership": "portal_active_operator"},
                     "control_interfaces": {"base": {"label": "Vacuum robot", "frame_id": "base_link", "operations": {
                         "drive": {"profile": PROFILE,
-                                  "command": {"track_name": COMMAND_TRACK, "msg_type": COMMAND, "format": "json"},
-                                  "presentations": ["gamepad", "joystick", "keyboard"]}}}}}
+                                  "command": {"track_name": COMMAND_TRACK, "msg_type": COMMAND, "format": "json"}}}}}}
         self.config = SimpleNamespace(
             discovery=document,
             command_tracks={COMMAND_TRACK: ("base", document["control_interfaces"]["base"]["operations"]["drive"])})

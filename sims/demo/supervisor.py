@@ -46,7 +46,7 @@ class Supervisor:
         self.key, self.url, self.api_key, self.api_secret = key, url, api_key, api_secret
         self.room_prefix, self.capacity = room_prefix, bounded(capacity, 'capacity', 1, 100, True)
         self.hourly = 30
-        self.visitor_hourly = 6
+        self.visitor_hourly = 20
         self.config = config or SessionConfig()
         self.launches = set()
         self.db.execute('CREATE TABLE IF NOT EXISTS rooms (name TEXT PRIMARY KEY, session TEXT UNIQUE)')
@@ -338,7 +338,7 @@ def main():
                             config=SessionConfig.from_env(values),
                             capacity=int(values.get('SIM_SESSION_CAPACITY', 2)))
     supervisor.hourly = bounded(values.get('SIM_LAUNCHES_PER_HOUR', 30), 'hourly launches', 1, 10000, True)
-    supervisor.visitor_hourly = bounded(values.get('SIM_VISITOR_LAUNCHES_PER_HOUR', 6), 'visitor launches', 1, 100, True)
+    supervisor.visitor_hourly = bounded(values.get('SIM_VISITOR_LAUNCHES_PER_HOUR', 20), 'visitor launches', 1, 100, True)
     web.run_app(application(supervisor), host='127.0.0.1', port=args.port, access_log=None)
 
 

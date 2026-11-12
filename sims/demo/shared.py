@@ -88,7 +88,7 @@ class SharedService:
                 raise Problem(409, item['reason'])
             recent = [r for r in runs if r['created_at'] > now()-3600000]
             if len(recent) >= int(self.env.get('SIM_LAUNCHES_PER_HOUR', 120)) or sum(
-                    r['owner'] == owner for r in recent) >= int(self.env.get('SIM_VISITOR_LAUNCHES_PER_HOUR', 6)):
+                    r['owner'] == owner for r in recent) >= int(self.env.get('SIM_VISITOR_LAUNCHES_PER_HOUR', 20)):
                 raise Problem(429, 'The launch limit has been reached. Try again later.')
             identifier = uuid.uuid4().hex
             run = dict(id=identifier, generation=identifier, owner=owner, request_id=identifier,

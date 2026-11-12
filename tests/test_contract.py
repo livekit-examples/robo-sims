@@ -102,17 +102,15 @@ class ConfigurationTests(unittest.TestCase):
         config.validate()
         self.assertEqual(config.feedback_tracks, {"/joint_states": ["left_arm", ("left_arm", "gripper"), "right_arm", ("right_arm", "gripper")]})
 
-    def test_cartesian_pose_is_vr_only_and_has_its_own_feedback(self):
+    def test_cartesian_pose_has_its_own_schema_and_feedback(self):
         original = Configuration.load(CONFIGS / "trossen-workbench.bindings.json", 12)
         self.assertEqual(sorted(original.pose_tracks), ["/left_arm/end_effector_pose", "/right_arm/end_effector_pose"])
         self.assertNotIn("/left_arm/end_effector_pose", original.feedback_tracks)
-        for mutation in ("presentation", "msg_type", "joint_names", "shared_feedback", "channel", "duplicate"):
+        for mutation in ("msg_type", "joint_names", "shared_feedback", "channel", "duplicate"):
             config = copy.deepcopy(original)
             interface = config.discovery["control_interfaces"]["left_arm"]
             op = interface["operations"]["cartesian_pose"]
-            if mutation == "presentation":
-                op["presentations"] = ["joint_sliders"]
-            elif mutation == "msg_type":
+            if mutation == "msg_type":
                 op["command"]["msg_type"] = "trajectory_msgs/msg/JointTrajectory"
             elif mutation == "joint_names":
                 op["joint_names"] = interface["joint_names"][:1]

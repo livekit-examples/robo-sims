@@ -31,9 +31,6 @@
           },
           "feedback_tracks": [
             "/left_arm/joint_states"
-          ],
-          "presentations": [
-            "joint_sliders"
           ]
         },
         "gripper_position": {
@@ -49,9 +46,6 @@
           },
           "feedback_tracks": [
             "/left_arm/joint_states"
-          ],
-          "presentations": [
-            "gripper_controls"
           ]
         },
         "cartesian_pose": {
@@ -63,9 +57,6 @@
           },
           "feedback_tracks": [
             "/left_arm/end_effector_pose"
-          ],
-          "presentations": [
-            "vr"
           ]
         }
       }
@@ -91,9 +82,6 @@
           },
           "feedback_tracks": [
             "/right_arm/joint_states"
-          ],
-          "presentations": [
-            "joint_sliders"
           ]
         },
         "gripper_position": {
@@ -109,9 +97,6 @@
           },
           "feedback_tracks": [
             "/right_arm/joint_states"
-          ],
-          "presentations": [
-            "gripper_controls"
           ]
         },
         "cartesian_pose": {
@@ -123,9 +108,6 @@
           },
           "feedback_tracks": [
             "/right_arm/end_effector_pose"
-          ],
-          "presentations": [
-            "vr"
           ]
         }
       }

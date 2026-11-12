@@ -35,7 +35,7 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(set(interfaces), {"left_arm", "right_arm"})
         for interface in interfaces.values():
             pose = interface["operations"]["cartesian_pose"]
-            self.assertEqual(pose["presentations"], ["hand_tracking", "vr"])
+            self.assertNotIn("presentations", pose)
             self.assertEqual(set(interface["operations"]), {"joint_position", "gripper_position", "cartesian_pose"})
             # The app defaults to the first operation of the primary channel.
             self.assertEqual(next(iter(interface["operations"])), "cartesian_pose")
