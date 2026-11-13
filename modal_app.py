@@ -77,7 +77,7 @@ def request_dispatch():
 
 
 # No warm workers. Each invocation owns one instance until process cleanup.
-@app.function(image=image, secrets=[secret], gpu='L4', cpu=2, memory=4096,
+@app.function(image=image, secrets=[secret], gpu=['L4', 'A10G', 'L40S'], cpu=2, memory=4096,
               max_containers=7, timeout=22200, retries=0, scaledown_window=2)
 def run_simulation(identifier: str, dispatch_key: str):
     import asyncio
@@ -91,6 +91,7 @@ def run_simulation(identifier: str, dispatch_key: str):
     logging.basicConfig(level=logging.INFO)
     run = command('claim', identifier, dispatch_key, modal.current_function_call_id(), uuid.uuid4().hex)
     if run is None:
+        logging.warning('instance=%s claim rejected late container; skipping', identifier)
         return {'code': None, 'skipped': True}
     run['stream_logs'] = True
 
