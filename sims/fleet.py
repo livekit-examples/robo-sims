@@ -13,6 +13,8 @@ CITY, COUNTRY, LAT, LNG = "lk.fleet.city", "lk.fleet.country", "lk.fleet.lat", "
 LOCATIONS = (
     ("trossen-wxai-whack", ("Area 51", "US", 37.2431, -115.7930)),
     ("trossen-workbench-whack", ("Area 51", "US", 37.2431, -115.7930)),
+    ("trossen-wxai", ("Tokyo", "JP", 35.6762, 139.6503)),
+    ("trossen-workbench", ("Rio de Janeiro", "BR", -22.9068, -43.1729)),
     ("f1tenth", ("Gulf of Mexico", "US", 25.0, -90.0)),
     ("vacuum", ("San Francisco", "US", 37.7749, -122.4194)),
     ("cluttered-table", ("London", "GB", 51.5074, -0.1278)),
