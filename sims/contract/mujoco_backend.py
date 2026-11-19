@@ -233,6 +233,13 @@ class MujocoBackend:
             for joint in self.joints[key].values():
                 self.targets[joint.actuator] = np.clip(self.data.qpos[joint.qpos], *joint.limits)
 
+    def reset(self) -> None:
+        self.scene.reset()
+        self.motions.clear()
+        self.targets = self.data.ctrl.copy()
+        for arm in self.scene.arms.values():
+            self.targets[arm.actuator_ids] = arm.setpoints
+
     def step(self, dt: float = 0.01) -> None:
         for _ in range(max(1, round(dt / self.model.opt.timestep))):
             for key, motion in list(self.motions.items()):

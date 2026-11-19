@@ -41,6 +41,16 @@ class RacingTests(unittest.TestCase):
         for _ in range(round(seconds / 0.005)):
             self.car.step()
 
+    def test_reset_returns_the_car_to_the_spawn_point(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = Backend(video=False, track_path=fixture_track(directory))
+            car, start = backend.car, (backend.car.x, backend.car.y, backend.car.yaw)
+            car.x, car.y, car.vx, car.laps = 500.0, -300.0, 6.0, 3
+            backend.reset()
+            self.assertIs(backend.car, car)
+            self.assertEqual((car.x, car.y, car.yaw), start)
+            self.assertEqual((car.vx, car.laps), (0.0, 0))
+
     def test_community_dimensions_units_and_policy(self):
         self.assertEqual(self.car.p['length'], 0.58)
         self.assertEqual(self.car.p['width'], 0.31)

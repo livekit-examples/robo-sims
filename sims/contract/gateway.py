@@ -261,10 +261,20 @@ class ContractGateway:
             self.armed = bool(target and self._compatible(target))
         return ""
 
+    async def _reset(self, invocation):
+        """Put the world back to its start, so that the next operator does not inherit a glitch."""
+        if invocation.payload != "":
+            raise rtc.RpcError(2000, "sim.reset takes an empty payload")
+        if not self._accepts(invocation.caller_identity):
+            raise rtc.RpcError(2003, "sim.reset needs the operator that controls the robot, with controls armed")
+        self.backend.reset()
+        return ""
+
     async def _publish(self):
         participant = self.room.local_participant
         attributes = {ROLE: 'robot', VERSION: '3', OWNER: '', fleet.MODEL: self.config.discovery['label'],
-                      fleet.CONTROL: fleet.control_mode(''), **fleet.location_attributes(self.sim_name)}
+                      fleet.CONTROL: fleet.control_mode(''), fleet.IS_SIMULATION: 'true',
+                      **fleet.location_attributes(self.sim_name)}
         if self.shared_instance:
             from ..demo.shared_rules import INSTANCE, GENERATION, SIMULATION
             attributes.update({INSTANCE: self.shared_instance, GENERATION: self.shared_instance,
@@ -279,6 +289,7 @@ class ContractGateway:
             return response
 
         participant.register_rpc_method("portal.set_active_operator", self._set_owner)
+        participant.register_rpc_method(fleet.RESET, self._reset)
         await self._publish_feedback(participant)
         for interface_id in self.config.discovery["control_interfaces"]:
             self.battery_tracks[interface_id] = await publish_json(

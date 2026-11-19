@@ -95,6 +95,11 @@ class Backend:
         self.car.target = Drive(0, 0)
         self.last_command = None
 
+    def reset(self):
+        """Back to the spawn point. The scene holds a reference to the car, so reset it in place."""
+        self.car.__init__(self.car.track)
+        self.timed_out = False
+
     def watchdog(self):
         if self.last_command is not None and self.clock() - self.last_command > self.timeout:
             self.hold()

@@ -7,6 +7,8 @@ The robot, not the web page, owns these values and rewrites them when they chang
 from __future__ import annotations
 
 MODEL, CONTROL = "lk.fleet.model", "lk.fleet.control"
+# The dashboard shows a Reset button only for a participant that sets this to "true".
+IS_SIMULATION, RESET = "is_simulation", "sim.reset"
 CITY, COUNTRY, LAT, LNG = "lk.fleet.city", "lk.fleet.country", "lk.fleet.lat", "lk.fleet.lng"
 
 # prefix -> (city, country, lat, lng). The first matching prefix wins.

@@ -24,6 +24,7 @@ from livekit import rtc
 from ..assets import SOURCES
 from ..video_stats import VideoStats
 from ..video import capture_video
+from ..fleet import IS_SIMULATION, RESET
 from ..livekit_auth import credentials
 from ..contract.battery import BATTERY_STATE, BATTERY_STATE_SCHEMA, PERIOD, battery_state, battery_track
 from ..contract.rtc_schema import publish_json
@@ -151,6 +152,7 @@ class SimParticipant:
 
     async def _publish(self) -> None:
         participant = self.room.local_participant
+        await participant.set_attributes({IS_SIMULATION: "true"})
         for arm_id in self.sim.arms:
             self.joint_tracks[arm_id] = await participant.publish_data_track(
                 name=data_tracks(arm_id)["joints"])
@@ -179,6 +181,15 @@ class SimParticipant:
                 self.controller = caller
                 LOG.info("Controller %s acquired the whole platform", caller)
             return "true" if self.controller == caller else "false"
+
+        @participant.register_rpc_method(RESET)
+        def reset(invocation: rtc.RpcInvocationData) -> str:
+            if invocation.payload:
+                raise ValueError("sim.reset takes an empty payload")
+            if invocation.caller_identity != self.controller:
+                raise ValueError("sim.reset needs the controller of the platform")
+            self.sim.reset()
+            return ""
 
         @participant.register_rpc_method("release_control")
         def release(invocation: rtc.RpcInvocationData) -> str:

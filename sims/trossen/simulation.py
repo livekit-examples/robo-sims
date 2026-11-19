@@ -262,13 +262,7 @@ class TrossenSimulation:
         self.model.opt.cone = mujoco.mjtCone.mjCONE_ELLIPTIC
         self.model.opt.impratio = 10
         self.data = mujoco.MjData(self.model)
-        if self.model.nkey:
-            mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
-        if scene == "cluttered_table":
-            cluttered_table.set_home(self.model, self.data)
-        mujoco.mj_forward(self.model, self.data)
-        if self.game is not None:
-            self.game.attach_mallets(self.data)  # the mallets start in the grippers
+        self._restore_world()
         # Inverse kinematics runs on a copy, so that it does not move the arm.
         self.ik_data = mujoco.MjData(self.model)
         self.width = width
@@ -438,6 +432,30 @@ class TrossenSimulation:
             start_time=np.zeros(7),
             goal_time=np.zeros(7),
         )
+
+    def _restore_world(self) -> None:
+        """Put every body in its start pose."""
+        if self.model.nkey:
+            mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
+        if self.platform == "cluttered_table":
+            cluttered_table.set_home(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
+        if self.game is not None:
+            self.game.attach_mallets(self.data)  # the mallets start in the grippers
+
+    def reset(self) -> None:
+        """Restore the world and make each arm hold its start pose."""
+        mujoco.mj_resetData(self.model, self.data)
+        if self.game is not None:
+            self.game.reset(self.data)  # before the mallets go back into the grippers
+        self._restore_world()
+        for arm in self.arms.values():
+            pose = self.data.qpos[arm.qpos_ids]
+            arm.setpoints[:] = arm.start[:] = arm.goal[:] = pose
+            arm.start_time[:] = arm.goal_time[:] = 0.0
+            arm.mode = ""
+            arm.desired_position = arm.desired_rotation = None
+            arm.gripper_velocity = 0.0
 
     def joint_state(self, arm_id: str) -> tuple[list[float], list[tuple[float, float]]]:
         arm = self.arms[arm_id]

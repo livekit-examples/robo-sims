@@ -124,6 +124,8 @@ class Backend:
         self.hold()
         self.timed_out = False
 
+    reset = reset_run
+
     def record_overload(self):
         self.sim.record_overload()
         self.hold()
