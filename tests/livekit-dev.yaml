@@ -1,0 +1,11 @@
+# Local integration fixture only. Never expose this development server publicly.
+port: 17880
+bind_addresses: [127.0.0.1]
+keys:
+  devkey: secret
+enable_participant_data_blob: true
+logging:
+  level: warn
+rtc:
+  tcp_port: 17881
+  udp_port: 17882

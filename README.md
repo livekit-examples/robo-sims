@@ -1,17 +1,28 @@
 # robo-sims
 
-Simulated robots for the LiveKit VR teleop stack in `trossen-livekit/`. One command starts any of them, and each joins the controller app's room as a robot you can select and drive.
+Simulated robots for the LiveKit teleop stack. One command starts each simulation.
+Trossen scenes default to the [generalized contract gateway](sims/contract/README.md),
+with JSON joint feedback and trajectory control configured for one or two arms.
+Use `--protocol legacy` with the original Trossen VR controller. reBot continues
+to use the real robot program's existing protocol.
 
 ```sh
 python -m sims list                       # what can run
 python -m sims run trossen-workbench      # run one
+python -m sims run trossen-workbench --protocol legacy  # original VR controller
 python -m sims run rebot-arm --help       # its options
+python -m sims run cluttered-table        # two arms, hand tracking control
 ```
 
 | Simulation | Level | What it is |
 |---|---|---|
+| `f1tenth` | participant | Community-scale formula RC car on Spielberg with an onboard driving camera, speed/steering control and lap telemetry. |
+| `vacuum` | participant | A round vacuum robot cleaning a furnished 2 x 2 m room. MuJoCo drives it, and it publishes overhead and onboard video, a cleaning grid, battery and bin state, and Twist control. |
 | `trossen-wxai` | participant | One Trossen WidowX AI arm with a wrist D405 stereo camera and a scene camera. |
+| `trossen-wxai-whack` | participant | Whack-a-mole on the WidowX AI: grab a wooden mallet and hit the pop-up ball that matches the lit color. |
 | `trossen-workbench` | participant | Two Trossen WidowX Pro arms with ZED X Nano wrist cameras, a ZED X Mini scene camera and a scene camera. |
+| `trossen-workbench-whack` | participant | Whack-a-mole on the Workbench: a bigger table with five holes and a mallet for each arm. Hits by either mallet count. |
+| `cluttered-table` | participant | Two WidowX AI arms at a maple workbench cluttered with household objects, with overhead, wrist and scene cameras. The arms take hand tracking control from the teleop web app. |
 | `rebot-arm` | hardware | One Seeed reBot B601-DM arm with a scene camera. The real robot program drives an emulated Damiao motor bus and opens a rendered camera stream. |
 
 Nothing here uses ROS.
@@ -35,6 +46,7 @@ python3.12 -m venv .venv
 
 | Assets | Source | License |
 |---|---|---|
+| `f1tenth_racetracks` | [f1tenth/f1tenth_racetracks](https://github.com/f1tenth/f1tenth_racetracks) `b95c4ef` | GPL-3.0 |
 | `trossen_arm_mujoco` | [TrossenRobotics/trossen_arm_mujoco](https://github.com/TrossenRobotics/trossen_arm_mujoco) `a208dad` (`workbench_assets` branch) | BSD-3-Clause |
 | `rebot_b601_dm` | [Yang-Ci/ReBot_Arm_DigitalTwin_DM](https://github.com/Yang-Ci/ReBot_Arm_DigitalTwin_DM) `7456d8b` | Apache-2.0 |
 
@@ -52,9 +64,15 @@ All the simulations share one set of credentials:
   ```
 
 - To join with a token you made yourself, set `LIVEKIT_TOKEN` or pass `--token`, together with `LIVEKIT_URL` or `--url`.
+- Use `--identity NAME` for a stable robot identity and saved generalized UI bindings.
+  Supplied tokens must match that identity. Contract mode requires permission to
+  update the robot's own participant attributes; generated tokens include it.
 - For a hardware-level simulation, the token goes to the robot program in its environment, not on its command line. The API secret stays in the launcher.
 
-In the controller app, select the simulation's identity in the Robot list. Its identity doesn't start with `controller-`, so the app lists it as a robot.
+In the legacy controller app, select the simulation's identity in the Robot list.
+The generalized client discovers contract-mode robots through Portal attributes.
+See [gateway setup and profile semantics](sims/contract/README.md) for the new client
+adapter requirements and the self-hosted server schema-storage setting.
 
 `--check` loads a simulation and prints what it provides without joining LiveKit.
 
@@ -68,6 +86,10 @@ In the controller app, select the simulation's identity in the Robot list. Its i
 | `sims/assets.py` | The pinned model sources. |
 | `sims/paths.py` | Where the teleop repo, the robot program and the assets are. `TELEOP_REPO`, `TELEOP_ROBOT_BIN` and `SIM_ASSETS_DIR` override the defaults. |
 | `sims/trossen/` | The Trossen simulations and their LiveKit probe. |
+| `sims/f1tenth/` | [Formula RC](sims/f1tenth/README.md): community-scale vehicle dynamics, Spielberg scene, Ackermann gateway and runner. |
+| `sims/vacuum/` | [Vacuum robot](sims/vacuum/README.md): MuJoCo room and differential-drive robot, 1 cm cleaning grid, battery and bin, Twist gateway and runner. |
+| `sims/cluttered_table/` | [Cluttered table](sims/cluttered_table/README.md): the workbench scene, household props and WidowX AI arm pair, on the contract gateway. |
+| `sims/contract/` | Shared generalized gateway, trajectory profile, MuJoCo backend, and per-scene JSON bindings/discovery. |
 | `sims/rebot/` | The reBot emulated hardware and its launcher. |
 | `tools/serial_bridge.py` | Turns a bus served over TCP back into a local serial device. Standard library only. |
 | `docker/rebot-bus/` | The reBot emulated hardware alone, as a container. |
@@ -76,3 +98,16 @@ In the controller app, select the simulation's identity in the Robot list. Its i
 ## Planned
 
 These are planned, but not built yet: Trossen Rivet, reBot dual arm, SO-101, a four-wheeled rover, and the rover with a reBot arm. Each new simulation should be hardware level where the robot's drivers allow it.
+
+
+Managed simulations use `sims.demo.worker` locally and in Modal.
+All simulation types share one LiveKit room, with one worker and control queue per type.
+The Modal worker pool has a limit of seven containers.
+
+LiveKit participant attributes store each control queue.
+The coordinator writes queue permissions and instance records through one serialized path.
+Control turns default to 60 seconds, and activity expires after 120 seconds.
+
+Install `requirements-modal.txt` for deployment and hosted API tests.
+The parent teleop repository documents local use in `docs/modal.md` and deployment in `docs/try-teleop-deployment.md`.
+Direct `python -m sims run` keeps the configured robot room and its existing ownership rules.

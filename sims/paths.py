@@ -15,8 +15,8 @@ ENV_FILE = SIMULATION_DIR / ".env.local"
 
 
 def _teleop_repo() -> Path:
-    """The teleop repository: its controller app holds the identity names, and
-    its robot program drives hardware-level simulations.
+    """The optional teleop repository whose robot program drives
+    hardware-level simulations.
 
     This repository is usually its robo-sims/ submodule; otherwise it is
     looked for beside this one, as trossen-livekit/.
@@ -29,7 +29,7 @@ def _teleop_repo() -> Path:
 
 
 TELEOP_REPO = _teleop_repo()
-SCIENTIST_NAMES_FILE = TELEOP_REPO / "controller" / "app" / "api" / "credentials" / "scientist-names.json"
+SCIENTIST_NAMES_FILE = Path(__file__).resolve().parent / "scientist-names.json"
 ROBOT_PROGRAM = Path(os.environ.get("TELEOP_ROBOT_BIN") or TELEOP_REPO / "robot" / "build" / "trossen_livekit_robot")
 
 # Third-party models, fetched by `python -m sims fetch-assets`.

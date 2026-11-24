@@ -1,0 +1,38 @@
+<mujoco model="Portal RoboCasa apple">
+  <asset>
+    <mesh file="visual/model_normalized_0.obj" name="model_normalized_0_vis" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <texture type="2d" name="image0" file="visual/image0.png" />
+    <material name="M_Apple.001" texture="image0" specular="0.5" shininess="0.25" />
+    <mesh file="collision/collision_mesh_collision_0.obj" name="apple_collision_mesh_0" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_1.obj" name="apple_collision_mesh_1" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_2.obj" name="apple_collision_mesh_2" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_3.obj" name="apple_collision_mesh_3" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_4.obj" name="apple_collision_mesh_4" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_5.obj" name="apple_collision_mesh_5" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_6.obj" name="apple_collision_mesh_6" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_7.obj" name="apple_collision_mesh_7" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_8.obj" name="apple_collision_mesh_8" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_9.obj" name="apple_collision_mesh_9" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_10.obj" name="apple_collision_mesh_10" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+    <mesh file="collision/collision_mesh_collision_11.obj" name="apple_collision_mesh_11" scale="0.07 0.07 0.07" refquat="1.0 0.0 0.0 0.0" />
+  </asset>
+  <worldbody>
+    <body name="object">
+      <geom solimp="0.998 0.998 0.001" solref="0.001 1" density="0" friction="0.95 0.3 0.1" type="mesh" mesh="model_normalized_0_vis" conaffinity="0" contype="0" group="2" material="M_Apple.001" name="visual_0" />
+      <geom mesh="apple_collision_mesh_0" type="mesh" name="collision_0" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_1" type="mesh" name="collision_1" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_2" type="mesh" name="collision_2" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_3" type="mesh" name="collision_3" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_4" type="mesh" name="collision_4" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_5" type="mesh" name="collision_5" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_6" type="mesh" name="collision_6" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_7" type="mesh" name="collision_7" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_8" type="mesh" name="collision_8" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_9" type="mesh" name="collision_9" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_10" type="mesh" name="collision_10" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <geom mesh="apple_collision_mesh_11" type="mesh" name="collision_11" group="3" contype="1" conaffinity="1" density="1000" friction=".8 .005 .0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+      <freejoint name="free" />
+      <inertial pos="3.75611778991e-05 0.00019980451013 -0.00540197071639" quat="0.207995938851 0.710714031245 0.0843427591734 0.666715497187" mass="0.12" diaginertia="4.97089350193e-05 4.92493078072e-05 4.69765353496e-05" />
+    </body>
+  </worldbody>
+</mujoco>

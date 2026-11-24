@@ -1,0 +1,110 @@
+<!-- Authored for Portal; tabletop texture and overhead camera pose credited in README.md. -->
+<mujoco model="Portal office workbench">
+  <compiler angle="radian" autolimits="true" />
+  <option timestep="0.004166666666666667" integrator="implicit" cone="elliptic" impratio="5" jacobian="dense" iterations="50" />
+  <visual>
+    <global offwidth="1280" offheight="960" />
+    <headlight active="true" ambient=".4 .4 .4" diffuse=".65 .65 .65" />
+    <!-- build_model sets clip planes in metres after the full scene is compiled. -->
+    <quality shadowsize="2048" />
+  </visual>
+  <!-- Filament-only quality settings; classic rendering ignores these. -->
+  <custom>
+    <text name="filament.shadows.type" data="pcss" />
+    <numeric name="filament.shadows.map_size" data="2048" />
+    <numeric name="filament.ao.enabled" data="1" />
+    <text name="filament.ao.quality" data="high" />
+    <text name="filament.cg.tone_mapping" data="pbr_neutral" />
+    <numeric name="filament.cg.exposure" data="0.5" />
+    <numeric name="filament.bloom.enabled" data="0" />
+  </custom>
+  <default>
+    <geom friction="0.8 0.005 0.0001" solref=".01 1" solimp=".95 .99 .001" condim="4" />
+    <default class="decoration">
+      <geom contype="0" conaffinity="0" group="2" />
+    </default>
+  </default>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1=".65 .70 .75" rgb2=".80 .82 .80" width="256" height="1536" />
+    <texture name="maple_tex" type="2d" file="maple_tabletop.png" />
+    <material name="maple" texture="maple_tex" texrepeat="1 1" specular=".18" shininess=".12" metallic="0" roughness="0.6" />
+    <texture name="carpet_tex" type="2d" builtin="checker" rgb1=".20 .23 .25" rgb2=".22 .25 .27" width="128" height="128" />
+    <material name="carpet" texture="carpet_tex" texrepeat="12 12" texuniform="true" specular="0" metallic="0" roughness="1.0" />
+    <material name="steel" rgba=".23 .27 .29 1" specular="0.5" shininess=".3" metallic="0.8" roughness="0.4" />
+    <material name="black" rgba=".045 .055 .065 1" specular="0.2" shininess=".3" metallic="0" roughness="0.45" />
+    <material name="wall" rgba=".76 .77 .73 1" specular="0.05" shininess=".3" metallic="0" roughness="0.95" />
+    <material name="white" rgba=".88 .89 .86 1" specular="0.1" shininess=".3" metallic="0" roughness="0.45" />
+    <material name="blue" rgba=".055 .30 .58 1" specular="0.2" shininess=".3" metallic="0" roughness="0.45" />
+    <material name="orange" rgba=".94 .30 .065 1" specular="0.15" shininess=".3" metallic="0" roughness="0.45" />
+    <material name="yellow" rgba=".96 .67 .11 1" specular="0.12" shininess=".3" metallic="0" roughness="0.45" />
+    <material name="red" rgba=".65 .12 .12 1" specular="0.1" shininess=".3" metallic="0" roughness="0.45" />
+    <material name="silver" rgba=".58 .63 .66 1" specular="0.7" shininess=".3" metallic="0.9" roughness="0.25" />
+    <material name="glass" rgba=".64 .81 .87 1" specular="0.4" shininess=".3" metallic="0" roughness="0.45" />
+    <material name="paper" rgba=".86 .83 .74 1" specular="0" shininess=".3" metallic="0" roughness="0.95" />
+    <material name="rubber" rgba=".13 .16 .17 1" specular="0.02" shininess=".3" metallic="0" roughness="0.9" />
+    <material name="lamp" rgba=".98 .97 .90 1" emission=".8" metallic="0" roughness="0.45" />
+  </asset>
+  <worldbody>
+    <light name="key" pos=".4 -.5 1.7" dir="-.1 .15 -1" diffuse=".85 .82 .76" ambient=".12 .12 .12" specular=".3 .3 .3" directional="false" />
+    <light name="fill" pos="-.7 1.4 1.4" dir=".2 -.4 -1" diffuse=".55 .63 .70" castshadow="false" />
+    <light name="room_fill" pos="1.4 0 1.2" dir="-1 0 -.5" diffuse=".5 .5 .5" castshadow="false" />
+    <!-- Simple room shell; the floor supports dropped props. -->
+    <geom name="ceiling" type="box" pos=".5 0 2.0" size="2.15 2.6 .04" class="decoration" material="white" />
+    <geom name="floor" type="box" pos="0 0 -0.81" size="3 3 0.03" material="carpet" />
+    <geom name="back_wall" type="box" pos="-1.65 0 0.59" size="0.04 2.6 1.37" class="decoration" material="wall" />
+    <geom name="front_wall" type="box" pos="2.6 0 0.59" size="0.04 2.6 1.37" class="decoration" material="wall" />
+    <geom name="left_wall" type="box" pos="0.65 -2.6 0.59" size="2.3 0.04 1.37" class="decoration" material="wall" />
+    <geom name="side_wall" type="box" pos="0.65 2.6 0.59" size="2.3 0.04 1.37" class="decoration" material="wall" />
+    <geom name="baseboard" type="box" pos="-1.598 0 -0.7" size="0.012 2.6 0.08" class="decoration" material="wall" />
+    <!-- Standard-height workbench. Surface Z=0 preserves the robot base frames. -->
+    <geom name="table" type="box" pos="0.05 0 -0.035" size="0.48 0.75 0.035" material="maple" />
+    <geom name="bench_leg_-0.34_-0.64" type="box" pos="-0.34 -0.64 -0.414" size="0.025 0.025 0.36" material="steel" />
+    <geom name="bench_foot_-0.34_-0.64" type="box" pos="-0.34 -0.64 -0.775" size="0.04 0.04 0.005" material="rubber" />
+    <geom name="bench_leg_-0.34_0.64" type="box" pos="-0.34 0.64 -0.414" size="0.025 0.025 0.36" material="steel" />
+    <geom name="bench_foot_-0.34_0.64" type="box" pos="-0.34 0.64 -0.775" size="0.04 0.04 0.005" material="rubber" />
+    <geom name="bench_leg_0.44_-0.64" type="box" pos="0.44 -0.64 -0.414" size="0.025 0.025 0.36" material="steel" />
+    <geom name="bench_foot_0.44_-0.64" type="box" pos="0.44 -0.64 -0.775" size="0.04 0.04 0.005" material="rubber" />
+    <geom name="bench_leg_0.44_0.64" type="box" pos="0.44 0.64 -0.414" size="0.025 0.025 0.36" material="steel" />
+    <geom name="bench_foot_0.44_0.64" type="box" pos="0.44 0.64 -0.775" size="0.04 0.04 0.005" material="rubber" />
+    <geom name="bench_apron_-0.64" type="box" pos="0.05 -0.64 -0.1" size="0.4 0.018 0.035" material="steel" />
+    <geom name="bench_apron_0.64" type="box" pos="0.05 0.64 -0.1" size="0.4 0.018 0.035" material="steel" />
+    <geom name="bench_crossbrace" type="box" pos="-0.34 0 -0.6" size="0.018 0.64 0.018" material="steel" />
+    <geom name="camera_upright_-0.58" type="box" pos="-0.405 -0.58 0.55" size="0.017 0.017 0.55" material="steel" />
+    <geom name="camera_upright_0.58" type="box" pos="-0.405 0.58 0.55" size="0.017 0.017 0.55" material="steel" />
+    <geom name="camera_crossbar" type="box" pos="-0.405 0 1.1" size="0.017 0.597 0.017" material="steel" />
+    <geom name="overhead_camera_housing" type="box" pos="-0.342 0 1.062" size="0.023 0.043 0.02" material="black" />
+    <camera name="overhead_camera" pos="-.324675 .009 1.047775" quat="-.6904 -.153 .153 .6904" mode="fixed" fovy="65" />
+    <!-- Minimal backdrop: window and ceiling lights. -->
+    <geom name="window_frame" type="box" pos="-1.59 0.75 0.88" size="0.035 0.68 0.57" class="decoration" material="white" />
+    <geom name="window_glass" type="box" pos="-1.548 0.75 0.88" size="0.009 0.635 0.525" class="decoration" material="glass" />
+    <geom name="window_mullion" type="box" pos="-1.531 0.75 0.88" size="0.011 0.012 0.525" class="decoration" material="white" />
+    <geom name="blind_0" type="box" pos="-1.52 0.75 0.43" size="0.025 0.63 0.008" class="decoration" material="paper" />
+    <geom name="blind_1" type="box" pos="-1.52 0.75 0.56" size="0.025 0.63 0.008" class="decoration" material="paper" />
+    <geom name="blind_2" type="box" pos="-1.52 0.75 0.69" size="0.025 0.63 0.008" class="decoration" material="paper" />
+    <geom name="blind_3" type="box" pos="-1.52 0.75 0.82" size="0.025 0.63 0.008" class="decoration" material="paper" />
+    <geom name="blind_4" type="box" pos="-1.52 0.75 0.95" size="0.025 0.63 0.008" class="decoration" material="paper" />
+    <geom name="blind_5" type="box" pos="-1.52 0.75 1.08" size="0.025 0.63 0.008" class="decoration" material="paper" />
+    <geom name="blind_6" type="box" pos="-1.52 0.75 1.21" size="0.025 0.63 0.008" class="decoration" material="paper" />
+    <geom name="blind_7" type="box" pos="-1.52 0.75 1.34" size="0.025 0.63 0.008" class="decoration" material="paper" />
+    <geom name="window_sill" type="box" pos="-1.5 0.75 0.28" size="0.13 0.7 0.02" class="decoration" material="white" />
+    <geom name="ceiling_panel_-0.5" type="box" pos="-0.5 0 1.94" size="0.28 0.6 0.012" class="decoration" material="lamp" />
+    <geom name="ceiling_panel_0.9" type="box" pos="0.9 0 1.94" size="0.28 0.6 0.012" class="decoration" material="lamp" />
+    <!-- Manipulation props: independent free bodies except the imported fixed tray. -->
+    <!-- Textured household objects are composed from assets/robocasa. -->
+    <body name="usb_drive" pos="-0.04 -0.25 0.010">
+      <freejoint name="usb_drive/free" />
+      <geom name="usb_body" type="box" pos="0 0 0" size="0.023 0.011 0.008" mass=".018" material="black" />
+      <geom name="usb_connector" type="box" pos="0.029 0 0" size="0.009 0.008 0.003" mass=".004" material="silver" />
+    </body>
+    <body name="screwdriver" pos="-0.025 0.43 0.014">
+      <freejoint name="screwdriver/free" />
+      <geom name="driver_handle" type="capsule" fromto="-0.035 0 0 0.02 0 0" size="0.014" material="orange" mass=".035" />
+      <geom name="driver_shaft" type="capsule" fromto="0.02 0 0 0.105 0 0" size="0.003" material="silver" mass=".014" />
+    </body>
+    <body name="notebook" pos="0.05 -0.49 0.010">
+      <freejoint name="notebook/free" />
+      <geom name="notebook_cover" type="box" pos="0 0 0" size="0.07 0.046 0.01" mass=".12" material="red" />
+      <geom name="notebook_pages" type="box" pos="0.002 0 0.001" size="0.066 0.043 0.007" mass=".03" material="paper" />
+    </body>
+  </worldbody>
+</mujoco>

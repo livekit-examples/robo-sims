@@ -4,3 +4,6 @@ livekit-api==1.2.2
 mujoco==4.0.0
 numpy==2.5.4
 pillow==11.3.0
+
+# HTTP supervisor and local lifecycle tests.
+aiohttp==3.14.5

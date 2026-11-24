@@ -11,7 +11,10 @@ from ..mujoco_tools import look_at  # Sets MUJOCO_GL before mujoco is imported.
 import mujoco
 import numpy as np
 
+from . import whack
+from ..cluttered_table import scene as cluttered_table
 from .protocol import Command
+from .whack import WhackAMole
 
 
 # The motion timing of the robot, from trossen-livekit/robot/src/arms/trossen_arm.cpp. The
@@ -206,23 +209,48 @@ class TrossenSimulation:
 
     def __init__(self, assets_dir: Path, scene: str = "workbench",
                  width: int = 320, height: int = 240,
-                 scene_width: int = 960, scene_height: int = 720):
+                 scene_width: int = 960, scene_height: int = 720,
+                 model_path: Path | None = None, *, renderer: str = "classic"):
+        if renderer not in ("classic", "filament"):
+            raise ValueError(f"Unknown renderer: {renderer}")
+        self.renderer_backend = renderer
+        self.batch_rendering = renderer == "filament"
+        self.filament = None
         self.platform = scene
-        if scene == "single_wxai":
+        if scene in ("single_wxai", "whack_wxai"):
             source = assets_dir / "wxai" / "wxai_follower.xml"
-        elif scene == "workbench":
+        elif scene in ("workbench", "workbench_whack"):
             source = assets_dir / "workbench" / "scene.xml"
+        elif scene == "cluttered_table":
+            # This scene is built in code from its own folder and the wxai arm model.
+            source = assets_dir / "wxai" / "wxai_follower.xml"
+            model_path = None
         else:
             raise ValueError(f"Unknown scene: {scene}")
+        if model_path is not None:
+            source = model_path
         if not source.is_file():
             raise FileNotFoundError(f"Trossen MuJoCo scene not found: {source}")
-        spec = mujoco.MjSpec.from_file(str(source))
+        spec = (cluttered_table.build_spec(assets_dir) if scene == "cluttered_table"
+                else mujoco.MjSpec.from_file(str(source)))
         if scene == "single_wxai":
             self._single_scene(spec, assets_dir)
+        elif scene == "whack_wxai":
+            self._whack_scene(spec, assets_dir)
+        elif scene == "workbench_whack":
+            self._workbench_whack_scene(spec, assets_dir)
+        elif scene == "cluttered_table":
+            pass  # built by cluttered_table.build_spec
         else:
             self._workbench_scene(spec, assets_dir)
         self.model = spec.compile()
-        if scene == "workbench":
+        if scene == "cluttered_table":
+            cluttered_table.finish_model(self.model)
+        # Scene games run on every physics step (see after_physics_step). A game
+        # sets up its keyframes, so it starts before the reset below.
+        layout = whack.LAYOUTS.get(scene)
+        self.game = WhackAMole(self.model, layout) if layout else None
+        if scene in ("workbench", "workbench_whack"):
             for geom_id in range(self.model.ngeom):
                 if self.model.geom_group[geom_id] == 3 and mujoco.mj_id2name(
                         self.model, mujoco.mjtObj.mjOBJ_GEOM, geom_id) is None:
@@ -234,9 +262,7 @@ class TrossenSimulation:
         self.model.opt.cone = mujoco.mjtCone.mjCONE_ELLIPTIC
         self.model.opt.impratio = 10
         self.data = mujoco.MjData(self.model)
-        if self.model.nkey:
-            mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
-        mujoco.mj_forward(self.model, self.data)
+        self._restore_world()
         # Inverse kinematics runs on a copy, so that it does not move the arm.
         self.ik_data = mujoco.MjData(self.model)
         self.width = width
@@ -248,12 +274,24 @@ class TrossenSimulation:
         self.model.vis.quality.offsamples = 8
         self.model.vis.quality.shadowsize = 8192
         self.renderers: dict[tuple[str, int, int], mujoco.Renderer] = {}
-        if scene == "single_wxai":
+        if scene in ("single_wxai", "whack_wxai"):
             self.arm_model = "wxai_v0"
             self.arms = {"arm": self._arm("arm", "", "left_gripper")}
             self.feeds = {
                 "arm_wrist": CameraFeed("cam", "sim.arm.stereo", "Wrist", "wrist", D405, "arm"),
                 "scene": CameraFeed("scene", "sim.scene", "Simulation scene", "scene"),
+            }
+        elif scene == "cluttered_table":
+            self.arm_model = "wxai_v0"
+            self.arms = {arm_id: self._arm(arm_id, f"{arm_id}_", f"{arm_id}_gripper")
+                         for arm_id in ("left", "right")}
+            self.feeds = {
+                "overhead": CameraFeed("overhead_camera", "overhead_camera", "Overhead", "other"),
+                "left_wrist": CameraFeed("left_wrist_cam", "left_wrist_camera", "Left wrist", "wrist",
+                                         None, "left"),
+                "right_wrist": CameraFeed("right_wrist_cam", "right_wrist_camera", "Right wrist", "wrist",
+                                          None, "right"),
+                "scene": CameraFeed("scene", "scene_camera", "Simulation scene", "scene"),
             }
         else:
             self.arm_model = "wxpro"
@@ -293,10 +331,19 @@ class TrossenSimulation:
                                  diffuse=[0.9, 0.9, 0.9], ambient=[0.35, 0.35, 0.35])
         spec.worldbody.add_geom(name="block_table", type=mujoco.mjtGeom.mjGEOM_BOX,
                                 pos=[0.32, 0, 0.05], size=[0.18, 0.18, 0.05], material="maple")
-        scene_pos = (0.62, -0.48, 0.5)
+        scene_pos = (0.311, -1.274, 0.880)
         spec.worldbody.add_camera(name="scene", pos=scene_pos,
-                                  quat=look_at(scene_pos, (0.28, 0, 0.1)), fovy=65)
+                                  quat=look_at(scene_pos, (0.272, 0.253, 0.363)), fovy=65)
         add_blocks(spec, 0.1, ((0.23, -0.08), (0.33, 0), (0.43, 0.08)))
+
+    @staticmethod
+    def _whack_scene(spec: mujoco.MjSpec, assets_dir: Path) -> None:
+        whack.add_tron_environment(spec, floor_z=0.0, table_top=whack.SINGLE_WXAI.table_top)
+        whack.build_scene(spec, whack.SINGLE_WXAI)
+        # From the side and above, looking down at the table.
+        scene_pos = (0.247, -1.477, 0.923)
+        spec.worldbody.add_camera(name="scene", pos=scene_pos,
+                                  quat=look_at(scene_pos, (0.432, 0.306, 0.429)), fovy=58)
 
     @staticmethod
     def _workbench_scene(spec: mujoco.MjSpec, assets_dir: Path) -> None:
@@ -306,6 +353,26 @@ class TrossenSimulation:
         spec.geom("floor").pos = [0, 0, floor_z]
         add_maple(spec, assets_dir)
         add_table(spec, (0.25, 0.0), (0.45, 0.55), table_z, floor_z)
+        TrossenSimulation._workbench_rig(spec)
+        scene_pos = (1.05, -0.75, 0.75)
+        spec.worldbody.add_camera(name="scene", pos=scene_pos,
+                                  quat=look_at(scene_pos, (0.25, 0, 0.1)), fovy=45)
+        add_blocks(spec, table_z, ((0.42, -0.1), (0.42, 0.0), (0.42, 0.1)))
+
+    @staticmethod
+    def _workbench_whack_scene(spec: mujoco.MjSpec, assets_dir: Path) -> None:
+        layout = whack.WORKBENCH
+        whack.add_tron_environment(spec, floor_z=layout.floor_z, table_top=layout.table_top)
+        TrossenSimulation._workbench_rig(spec)
+        whack.build_scene(spec, layout)
+        # Behind and above the right arm, looking across the table at the light bar.
+        scene_pos = (-0.55, -1.45, 1.25)
+        spec.worldbody.add_camera(name="scene", pos=scene_pos,
+                                  quat=look_at(scene_pos, (0.4, 0.0, -0.05)), fovy=55)
+
+    @staticmethod
+    def _workbench_rig(spec: mujoco.MjSpec) -> None:
+        """Gravity compensation, finger contacts and stereo cameras for the Workbench arms."""
         # The upstream mesh collision hulls overlap in the home pose and pin
         # the arms. Keep the visuals and use simple contacts for this fixture.
         for arm_id in ("left", "right"):
@@ -335,10 +402,6 @@ class TrossenSimulation:
                               (0.0098, 0.0, 0.065), 25.0, ZED_X_NANO)
         # ZED X Mini front face center and tilt, from the cam_high mesh.
         add_stereo_camera(spec.body("cam_high"), "center", (0.1125, 0.0, 0.3114), 25.0, ZED_X_MINI)
-        scene_pos = (1.05, -0.75, 0.75)
-        spec.worldbody.add_camera(name="scene", pos=scene_pos,
-                                  quat=look_at(scene_pos, (0.25, 0, 0.1)), fovy=45)
-        add_blocks(spec, table_z, ((0.42, -0.1), (0.42, 0.0), (0.42, 0.1)))
 
     def _named(self, kind: mujoco.mjtObj, name: str) -> int:
         value = mujoco.mj_name2id(self.model, kind, name)
@@ -369,6 +432,30 @@ class TrossenSimulation:
             start_time=np.zeros(7),
             goal_time=np.zeros(7),
         )
+
+    def _restore_world(self) -> None:
+        """Put every body in its start pose."""
+        if self.model.nkey:
+            mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
+        if self.platform == "cluttered_table":
+            cluttered_table.set_home(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
+        if self.game is not None:
+            self.game.attach_mallets(self.data)  # the mallets start in the grippers
+
+    def reset(self) -> None:
+        """Restore the world and make each arm hold its start pose."""
+        mujoco.mj_resetData(self.model, self.data)
+        if self.game is not None:
+            self.game.reset(self.data)  # before the mallets go back into the grippers
+        self._restore_world()
+        for arm in self.arms.values():
+            pose = self.data.qpos[arm.qpos_ids]
+            arm.setpoints[:] = arm.start[:] = arm.goal[:] = pose
+            arm.start_time[:] = arm.goal_time[:] = 0.0
+            arm.mode = ""
+            arm.desired_position = arm.desired_rotation = None
+            arm.gripper_velocity = 0.0
 
     def joint_state(self, arm_id: str) -> tuple[list[float], list[tuple[float, float]]]:
         arm = self.arms[arm_id]
@@ -593,6 +680,12 @@ class TrossenSimulation:
                 arm.setpoints[:] = arm.start + (arm.goal - arm.start) * progress
                 self.data.ctrl[arm.actuator_ids] = arm.setpoints
             mujoco.mj_step(self.model, self.data)
+            self.after_physics_step()
+
+    def after_physics_step(self) -> None:
+        """Runs scene logic, such as a game, after each mj_step. Controllers call this."""
+        if self.game is not None:
+            self.game.update(self.data)
 
     def eye_size(self, camera_id: str) -> tuple[int, int]:
         feed = self.feeds[camera_id]
@@ -607,14 +700,73 @@ class TrossenSimulation:
         width, height = self.eye_size(camera_id)
         return (2 * width if self.feeds[camera_id].stereo else width), height
 
+    def camera_info(self) -> dict:
+        """Calibrate stereo eyes in their fixed mount frames, without creating a renderer."""
+        result = {}
+        for key, feed in self.feeds.items():
+            if feed.stereo is None:
+                continue
+            camera_id = self._named(mujoco.mjtObj.mjOBJ_CAMERA, feed.camera)
+            if self.model.cam_mode[camera_id] != mujoco.mjtCamLight.mjCAMLIGHT_FIXED:
+                raise ValueError("camera_info requires a fixed camera-to-mount transform")
+            camera = mujoco.MjvCamera()
+            camera.type = mujoco.mjtCamera.mjCAMERA_FIXED
+            camera.fixedcamid = camera_id
+            projection = mujoco.mjv_camera2GLCamera(self.model, self.data, camera)
+            if projection.orthographic:
+                raise ValueError("camera_info requires a perspective camera")
+            width, height = self.eye_size(key)
+            span = projection.frustum_top - projection.frustum_bottom
+            half_width = projection.frustum_width or span * width / height / 2
+            intrinsics = {
+                "fx": width * projection.frustum_near / (2 * half_width),
+                "fy": height * projection.frustum_near / span,
+                "cx": width / 2 - width * projection.frustum_center / (2 * half_width),
+                "cy": height * projection.frustum_top / span,
+                "distortion_model": "none", "distortion_coefficients": [],
+            }
+            rotation = np.zeros(9)
+            mujoco.mju_quat2Mat(rotation, self.model.cam_quat[camera_id])
+            rotation = rotation.reshape(3, 3)
+            # MuJoCo looks along -Z with +Y up; optical frames use +Z forward, +Y down.
+            optical = rotation @ np.diag([1.0, -1.0, -1.0])
+            quaternion = np.zeros(4)
+            mujoco.mju_mat2Quat(quaternion, optical.ravel())
+            parent_id = int(self.model.cam_bodyid[camera_id])
+            parent = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, parent_id)
+            if not parent:
+                raise ValueError("camera_info requires a named camera mount")
+            views = {}
+            for index, eye in enumerate(("left", "right")):
+                translation = self.model.cam_pos[camera_id] + index * feed.stereo.baseline * rotation[:, 0]
+                views[eye] = {
+                    "frame_id": f"{feed.camera}_{eye}_optical",
+                    "image_region": {"x": index * width, "y": 0, "width": width, "height": height},
+                    "intrinsics": dict(intrinsics),
+                    "extrinsics": {"parent_frame_id": parent,
+                        "translation": translation.tolist(),
+                        "rotation_xyzw": quaternion[[1, 2, 3, 0]].tolist()},
+                }
+            result[key] = {"track_name": feed.name, "width": 2 * width, "height": height, "views": views}
+        return result
+
     def open_renderers(self) -> None:
         """Create every feed's renderer.
 
         On macOS, an OpenGL context stays locked to the first thread that uses
         it. Call this, Renderer.render(), and close() on one rendering thread.
         """
-        for camera_id in self.feeds:
-            self._renderer(camera_id)
+        if self.batch_rendering:
+            from .filament import FilamentFrames
+
+            self.filament = FilamentFrames(self.model, self.feeds,
+                {key: self.render_size(key) for key in self.feeds}, fog=self.game is not None)
+        else:
+            for camera_id in self.feeds:
+                self._renderer(camera_id)
+
+    def prepare_batch(self, keys):
+        return self.filament.prepare(self.model, self.data, keys)
 
     def prepare(self, camera_id: str) -> mujoco.Renderer:
         """Copy the current state into the feed's renderer. Call render() on it next.
@@ -644,15 +796,24 @@ class TrossenSimulation:
             renderer = mujoco.Renderer(self.model, height=height, width=width)
             # The floor reflection draws the whole scene a second time.
             renderer.scene.flags[mujoco.mjtRndFlag.mjRND_REFLECTION] = 0
+            if self.game is not None:
+                renderer.scene.flags[mujoco.mjtRndFlag.mjRND_FOG] = 1
             if feed.stereo:
                 renderer.scene.stereo = mujoco.mjtStereo.mjSTEREO_SIDEBYSIDE
             self.renderers[key] = renderer
         return renderer
 
     def render(self, camera_id: str) -> np.ndarray:
+        if self.batch_rendering:
+            if self.filament is None:
+                self.open_renderers()
+            return self.prepare_batch((camera_id,)).render()[camera_id].copy()
         return self.prepare(camera_id).render().copy()
 
     def close(self) -> None:
+        if self.filament is not None:
+            self.filament.close()
+            self.filament = None
         for renderer in self.renderers.values():
             renderer.close()
         self.renderers.clear()
